@@ -1,0 +1,29 @@
+# Environment & credentials — never commit these
+.env
+config/sheets_credentials.json
+
+# Database & data files
+data/mlb_pregame.db
+data/*.csv
+data/*.db
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Logs
+pipeline.log
+logs/
+
+# Tableau workbooks with embedded data
+tableau/*.twbx
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+desktop.ini

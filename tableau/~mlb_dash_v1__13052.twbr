@@ -73,9 +73,9 @@
             <contains-null>true</contains-null>
             <attributes>
               <attribute datatype='integer' name='context'>4</attribute>
-              <attribute datatype='string' name='gridOrigin'>&quot;A1:AB268:no:A1:AB268:0&quot;</attribute>
+              <attribute datatype='string' name='gridOrigin'>&quot;A1:AB158:no:A1:AB158:0&quot;</attribute>
               <attribute datatype='boolean' name='header'>true</attribute>
-              <attribute datatype='integer' name='outcome'>2</attribute>
+              <attribute datatype='integer' name='outcome'>6</attribute>
             </attributes>
           </metadata-record>
           <metadata-record class='column'>
@@ -578,7 +578,7 @@
       <column-instance column='[baseline_avg]' derivation='Avg' name='[avg:baseline_avg:qk]' pivot='key' type='quantitative' />
       <column-instance column='[final_projection]' derivation='Avg' name='[avg:final_projection:qk]' pivot='key' type='quantitative' />
       <column-instance column='[projected_total_bases]' derivation='Sum' name='[sum:projected_total_bases:qk]' pivot='key' type='quantitative' />
-      <extract _.fcp.VConnDownstreamExtractsWithWarnings.true...user-specific='false' count='-1' enabled='true' object-id='' units='records'>
+      <extract _.fcp.VConnDownstreamExtractsWithWarnings.true...user-specific='false' count='-1' enabled='false' object-id='' units='records'>
         <connection access_mode='readonly' author-locale='en_US' class='hyper' dbname='C:/Users/nicho/AppData/Local/Temp/TableauTemp/#TableauTemp_1fdxbt60x81kix1c2ummn0nveo38.hyper' default-settings='hyper' schema='Extract' sslmode='' tablename='Extract' update-time='06/08/2026 12:14:27 AM' username='tableau_internal_user'>
           <relation name='Extract' table='[Extract].[Extract]' type='table' />
           <metadata-records>
@@ -1405,9 +1405,6 @@
           <filter class='categorical' column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896933279854593:nk]'>
             <groupfilter function='member' level='[none:Calculation_0896933279854593:nk]' member='true' user:ui-domain='database' user:ui-enumeration='inclusive' user:ui-marker='enumerate' />
           </filter>
-          <filter class='categorical' column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896934201315331:nk]'>
-            <groupfilter function='member' level='[none:Calculation_0896934201315331:nk]' member='&quot;7:30 PM&quot;' user:ui-domain='relevant' user:ui-enumeration='inclusive' user:ui-marker='enumerate' />
-          </filter>
           <manual-sort column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:batter_name:nk]' direction='ASC'>
             <dictionary>
               <bucket>&quot;Anthony Seigler&quot;</bucket>
@@ -1778,7 +1775,6 @@
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[:Measure Names]</column>
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896933279854593:nk]</column>
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[attr:projected_total_bases:qk]</column>
-            <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896934201315331:nk]</column>
           </slices>
           <aggregation value='true' />
         </view>
@@ -1914,9 +1910,6 @@
           </filter>
           <filter class='categorical' column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896933279854593:nk]'>
             <groupfilter function='member' level='[none:Calculation_0896933279854593:nk]' member='true' user:ui-domain='database' user:ui-enumeration='inclusive' user:ui-marker='enumerate' />
-          </filter>
-          <filter class='categorical' column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896934201315331:nk]'>
-            <groupfilter function='member' level='[none:Calculation_0896934201315331:nk]' member='&quot;7:30 PM&quot;' user:ui-domain='relevant' user:ui-enumeration='inclusive' user:ui-marker='enumerate' />
           </filter>
           <manual-sort column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:batter_name:nk]' direction='ASC'>
             <dictionary>
@@ -2220,7 +2213,6 @@
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[:Measure Names]</column>
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896933279854593:nk]</column>
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[attr:final_projection:qk]</column>
-            <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896934201315331:nk]</column>
           </slices>
           <aggregation value='true' />
         </view>
@@ -2360,9 +2352,6 @@
           </filter>
           <filter class='categorical' column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896933279854593:nk]'>
             <groupfilter function='member' level='[none:Calculation_0896933279854593:nk]' member='true' user:ui-domain='database' user:ui-enumeration='inclusive' user:ui-marker='enumerate' />
-          </filter>
-          <filter class='categorical' column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896934201315331:nk]'>
-            <groupfilter function='member' level='[none:Calculation_0896934201315331:nk]' member='&quot;7:30 PM&quot;' user:ui-domain='relevant' user:ui-enumeration='inclusive' user:ui-marker='enumerate' />
           </filter>
           <manual-sort column='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:batter_name:nk]' direction='ASC'>
             <dictionary>
@@ -2706,13 +2695,13 @@
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[:Measure Names]</column>
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896933279854593:nk]</column>
             <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[attr:projected_hr_probability:qk]</column>
-            <column>[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896934201315331:nk]</column>
           </slices>
           <aggregation value='true' />
         </view>
         <style>
           <style-rule element='cell'>
             <format attr='width' field='[federated.00cacqs1b61y2o14kha7n02j4cmj].[:Measure Names]' value='60' />
+            <format attr='text-format' field='[federated.00cacqs1b61y2o14kha7n02j4cmj].[attr:projected_hr_probability:qk]' value='p0.00%' />
           </style-rule>
           <style-rule element='header'>
             <format attr='height' field='[federated.00cacqs1b61y2o14kha7n02j4cmj].[:Measure Names]' value='38' />
@@ -2931,11 +2920,11 @@
       <size sizing-mode='automatic' />
       <zones>
         <zone h='100000' id='4' type-v2='layout-basic' w='100000' x='0' y='0'>
-          <zone h='98172' id='57' param='horz' type-v2='layout-flow' w='98982' x='509' y='914'>
-            <zone h='98172' id='17' param='horz' type-v2='layout-flow' w='98982' x='509' y='914'>
-              <zone h='98172' id='10' param='horz' type-v2='layout-flow' w='98982' x='509' y='914'>
-                <zone h='98172' id='5' param='vert' type-v2='layout-flow' w='98982' x='509' y='914'>
-                  <zone h='5600' id='7' type-v2='title' w='98982' x='509' y='914'>
+          <zone h='97992' id='57' param='horz' type-v2='layout-flow' w='98982' x='509' y='1004'>
+            <zone h='97992' id='17' param='horz' type-v2='layout-flow' w='98982' x='509' y='1004'>
+              <zone h='97992' id='10' param='horz' type-v2='layout-flow' w='98982' x='509' y='1004'>
+                <zone h='97992' id='5' param='vert' type-v2='layout-flow' w='98982' x='509' y='1004'>
+                  <zone h='6148' id='7' type-v2='title' w='98982' x='509' y='1004'>
                     <zone-style>
                       <format attr='border-color' value='#000000' />
                       <format attr='border-style' value='none' />
@@ -3003,7 +2992,7 @@
       <device-preview visible='true' />
       <simple-id uuid='{461B4C3D-C6E2-477A-8E3E-4EE9EB79F4D8}' />
     </window>
-    <window class='dashboard' name='TOP BATTING' tab-color='#4f779a'>
+    <window class='dashboard' maximized='true' name='TOP BATTING' tab-color='#4f779a'>
       <viewpoints>
         <viewpoint name='top_bases' />
         <viewpoint name='top_batting_full' />
@@ -3016,7 +3005,7 @@
     <window class='worksheet' name='top_batting_full' tab-color='#17927d'>
       <cards>
         <edge name='left'>
-          <strip size='293'>
+          <strip size='234'>
             <card type='pages' />
             <card type='filters' />
             <card type='marks' />
@@ -3024,18 +3013,18 @@
           </strip>
         </edge>
         <edge name='top'>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='columns' />
           </strip>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='rows' />
           </strip>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='title' />
           </strip>
         </edge>
         <edge name='right'>
-          <strip size='200'>
+          <strip size='160'>
             <card param='[federated.00cacqs1b61y2o14kha7n02j4cmj].[:Measure Names]' show-morefewerbutton='false' type='filter' />
             <card pane-specification-id='0' param='[federated.00cacqs1b61y2o14kha7n02j4cmj].[sum:delta:qk]' type='color' />
           </strip>
@@ -3046,7 +3035,7 @@
     <window class='worksheet' name='top_bases' tab-color='#17927d'>
       <cards>
         <edge name='left'>
-          <strip size='200'>
+          <strip size='160'>
             <card type='pages' />
             <card type='filters' />
             <card type='marks' />
@@ -3054,28 +3043,28 @@
           </strip>
         </edge>
         <edge name='top'>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='columns' />
           </strip>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='rows' />
           </strip>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='title' />
           </strip>
         </edge>
         <edge name='right'>
-          <strip size='125'>
+          <strip size='100'>
             <card pane-specification-id='0' param='[federated.00cacqs1b61y2o14kha7n02j4cmj].[sum:delta:qk]' type='color' />
           </strip>
         </edge>
       </cards>
       <simple-id uuid='{579F6D84-D5B4-41DC-A60A-7A01272B7AA1}' />
     </window>
-    <window class='worksheet' maximized='true' name='top_hrs' tab-color='#17927d'>
+    <window class='worksheet' name='top_hrs' tab-color='#17927d'>
       <cards>
         <edge name='left'>
-          <strip size='200'>
+          <strip size='160'>
             <card type='pages' />
             <card type='filters' />
             <card type='marks' />
@@ -3083,18 +3072,18 @@
           </strip>
         </edge>
         <edge name='top'>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='columns' />
           </strip>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='rows' />
           </strip>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='title' />
           </strip>
         </edge>
         <edge name='right'>
-          <strip size='125'>
+          <strip size='100'>
             <card param='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_0896933279854593:nk]' type='filter' />
             <card pane-specification-id='0' param='[federated.00cacqs1b61y2o14kha7n02j4cmj].[sum:delta:qk]' type='color' />
           </strip>
@@ -3105,7 +3094,7 @@
     <window class='worksheet' name='Final_Proj_Matchup'>
       <cards>
         <edge name='left'>
-          <strip size='200'>
+          <strip size='160'>
             <card type='pages' />
             <card type='filters' />
             <card type='marks' />
@@ -3113,18 +3102,18 @@
           </strip>
         </edge>
         <edge name='top'>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='columns' />
           </strip>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='rows' />
           </strip>
-          <strip size='2147483647'>
+          <strip size='30'>
             <card type='title' />
           </strip>
         </edge>
         <edge name='right'>
-          <strip size='125'>
+          <strip size='100'>
             <card mode='dropdown' param='[federated.00cacqs1b61y2o14kha7n02j4cmj].[none:Calculation_1833774893711360:nk]' type='filter' />
             <card pane-specification-id='0' param='[federated.00cacqs1b61y2o14kha7n02j4cmj].[sum:delta:qk]' type='color' />
           </strip>

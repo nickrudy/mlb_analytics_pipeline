@@ -30,3 +30,7 @@ desktop.ini
 
 tableau/~*.twbr
 tableau/~*.twbx
+
+data/*.db-shm
+data/*.db-wal
+data/*.db

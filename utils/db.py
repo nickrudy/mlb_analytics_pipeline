@@ -50,11 +50,35 @@ class _wrap:
         cur.executemany(self._translate(sql), s or [])
         return cur
 
-    def cursor(self): return self._c.cursor()
+    def cursor(self):
+        return _cursor_wrap(self._c.cursor())
+
     def commit(self): self._c.commit()
     def rollback(self): self._c.rollback()
     def close(self): self._c.close()
     def __getattr__(self, n): return getattr(self._c, n)
+
+
+class _cursor_wrap:
+    """Wraps a psycopg2 cursor to translate :named params automatically."""
+    def __init__(self, cur): self._cur = cur
+
+    @staticmethod
+    def _translate(sql):
+        import re
+        return re.sub(r':([a-zA-Z_][a-zA-Z0-9_]*)', r'%(\1)s', sql)
+
+    def execute(self, sql, p=None):
+        self._cur.execute(self._translate(sql), p or {})
+        return self
+
+    def executemany(self, sql, s):
+        self._cur.executemany(self._translate(sql), s or [])
+        return self
+
+    def fetchone(self): return self._cur.fetchone()
+    def fetchall(self): return self._cur.fetchall()
+    def __getattr__(self, n): return getattr(self._cur, n)
 
 # ---------------------------------------------------------------------------
 # SQLite config

@@ -29,7 +29,7 @@ jobs:
   run_pipeline:
     name: Daily MLB Pipeline
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
       # ── 1. Checkout cloud-migration branch (changes to main after merge)

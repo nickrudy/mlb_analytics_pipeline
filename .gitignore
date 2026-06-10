@@ -27,3 +27,6 @@ tableau/*.twbx
 # Windows
 Thumbs.db
 desktop.ini
+
+tableau/~*.twbr
+tableau/~*.twbx

@@ -34,10 +34,22 @@ DB_BACKEND = os.getenv("DB_BACKEND", "sqlite").lower()
 class _wrap:
     """Give psycopg2 connections a sqlite3-compatible execute() method."""
     def __init__(self, c): self._c = c
+
+    @staticmethod
+    def _translate(sql):
+        import re
+        return re.sub(r':([a-zA-Z_][a-zA-Z0-9_]*)', r'%(\1)s', sql)
+
     def execute(self, sql, p=None):
-        cur = self._c.cursor(); cur.execute(sql, p or {}); return cur
+        cur = self._c.cursor()
+        cur.execute(self._translate(sql), p or {})
+        return cur
+
     def executemany(self, sql, s):
-        cur = self._c.cursor(); cur.executemany(sql, s); return cur
+        cur = self._c.cursor()
+        cur.executemany(self._translate(sql), s or [])
+        return cur
+
     def cursor(self): return self._c.cursor()
     def commit(self): self._c.commit()
     def rollback(self): self._c.rollback()

@@ -584,15 +584,20 @@ def transform_splits(conn, as_of_date, window_code, start_date, end_date):
     # pd.read_sql_query needs a SQLAlchemy engine for Supabase (psycopg2
     # connections don't support the pandas read path directly)
     engine = get_engine()
-    df = pd.read_sql_query(
+    if DB_BACKEND == "supabase":
+        sql = """
+            SELECT * FROM stg_statcast_pitches
+            WHERE game_date >= %(start)s AND game_date <= %(end)s
+              AND pitcher_id IS NOT NULL AND batter_id IS NOT NULL
         """
-        SELECT * FROM stg_statcast_pitches
-        WHERE game_date >= :start AND game_date <= :end
-          AND pitcher_id IS NOT NULL AND batter_id IS NOT NULL
-        """,
-        engine,
-        params={"start": start_date, "end": end_date},
-    )
+    else:
+        sql = """
+            SELECT * FROM stg_statcast_pitches
+            WHERE game_date >= :start AND game_date <= :end
+              AND pitcher_id IS NOT NULL AND batter_id IS NOT NULL
+        """
+    df = pd.read_sql_query(sql, engine, params={"start": start_date, "end": end_date})
+    
     if df.empty:
         log.warning("No pitches for %s %s→%s.", window_code, start_date, end_date)
         return

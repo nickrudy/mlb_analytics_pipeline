@@ -470,10 +470,11 @@ def ingest_lineups(conn, game_id: int, as_of_date: str) -> None:
 
 def run(game_date: str, as_of_date: str, seed_dimensions: bool = False) -> None:
     with get_connection() as conn:
-        # SQLite-only PRAGMAs — skip on Supabase
         if DB_BACKEND == "sqlite":
             conn.execute("PRAGMA foreign_keys=OFF;")
             conn.execute("PRAGMA journal_mode=WAL;")
+        elif DB_BACKEND == "supabase":
+            conn.execute("SET session_replication_role = replica")
 
         if seed_dimensions:
             ingest_teams_and_venues(conn)

@@ -31,6 +31,19 @@ load_dotenv()
 
 DB_BACKEND = os.getenv("DB_BACKEND", "sqlite").lower()
 
+class _wrap:
+    """Give psycopg2 connections a sqlite3-compatible execute() method."""
+    def __init__(self, c): self._c = c
+    def execute(self, sql, p=None):
+        cur = self._c.cursor(); cur.execute(sql, p or {}); return cur
+    def executemany(self, sql, s):
+        cur = self._c.cursor(); cur.executemany(sql, s); return cur
+    def cursor(self): return self._c.cursor()
+    def commit(self): self._c.commit()
+    def rollback(self): self._c.rollback()
+    def close(self): self._c.close()
+    def __getattr__(self, n): return getattr(self._c, n)
+
 # ---------------------------------------------------------------------------
 # SQLite config
 # ---------------------------------------------------------------------------
@@ -105,9 +118,12 @@ def get_connection():
         _SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(_SQLITE_PATH)
 
+    if DB_BACKEND == "supabase":
+        conn = _wrap(conn)
     try:
         yield conn
         conn.commit()
+
     except Exception:
         conn.rollback()
         raise

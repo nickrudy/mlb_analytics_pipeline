@@ -1,0 +1,12 @@
+﻿sqlalchemy>=2.0,<3.0
+psycopg2-binary>=2.9
+python-dotenv>=1.0
+pybaseball>=2.2
+requests>=2.31
+gspread>=5.12
+google-auth>=2.23
+google-auth-oauthlib>=1.1
+pandas>=2.0,<3.0
+numpy>=1.24
+scikit-learn>=1.3
+tenacity>=8.2

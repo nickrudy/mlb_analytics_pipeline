@@ -1,18 +1,38 @@
 name: MLB Analytics Pipeline — Daily Run
 
 on:
-  # ── Scheduled trigger: 10:00 AM ET = 14:00 UTC (works for both EST and EDT)
-  # Adjust if your games start early (west coast day games)
+  # ── Scheduled triggers (all times UTC, CDT = UTC-5) ──────────────────────
+  # 9:00 AM CT  = 14:00 UTC — full morning run (includes Statcast)
+  # 11:00 AM CT = 16:00 UTC — lineup refresh
+  # 12:30 PM CT = 17:30 UTC — lineup refresh
+  # 2:00 PM CT  = 19:00 UTC — lineup refresh
+  # 3:30 PM CT  = 20:30 UTC — lineup refresh
+  # 5:00 PM CT  = 22:00 UTC — lineup refresh (evening games posting)
+  # 6:30 PM CT  = 23:30 UTC — lineup refresh
+  # 8:00 PM CT  = 01:00 UTC — west coast games
   schedule:
-    - cron: "0 14 * * *"
+    - cron: "0 14 * * *"    # 9:00 AM CT  — full run with Statcast
+    - cron: "0 16 * * *"    # 11:00 AM CT — skip Statcast
+    - cron: "30 17 * * *"   # 12:30 PM CT — skip Statcast
+    - cron: "0 19 * * *"    # 2:00 PM CT  — skip Statcast
+    - cron: "30 20 * * *"   # 3:30 PM CT  — skip Statcast
+    - cron: "0 22 * * *"    # 5:00 PM CT  — skip Statcast
+    - cron: "30 23 * * *"   # 6:30 PM CT  — skip Statcast
+    - cron: "0 1 * * *"     # 8:00 PM CT  — skip Statcast
 
-  # ── Manual trigger with optional override date (for backfills / reruns)
+  # ── Manual trigger ────────────────────────────────────────────────────────
   workflow_dispatch:
     inputs:
       run_date:
         description: "Override date (YYYY-MM-DD). Leave blank for today."
         required: false
         default: ""
+      skip_statcast:
+        description: "Skip Statcast pull"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
       dry_run:
         description: "Dry run — fetch data but skip writes"
         required: false
@@ -32,11 +52,11 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # ── 1. Checkout cloud-migration branch (changes to main after merge)
+      # ── 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python 3.10 to match local dev environment
+      # ── 2. Set up Python 3.10
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
@@ -46,18 +66,16 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ── 4. Write Google Sheets service account key to disk
-      #       The secret stores the entire JSON content as a string.
-      #       Written to config/sheets_credentials.json to match the
-      #       default path in utils/config.py.
+      # ── 4. Write Google Sheets credentials
       - name: Write GSheets credentials
         run: |
           mkdir -p config
           echo '${{ secrets.GSHEETS_SERVICE_ACCOUNT_JSON }}' > config/sheets_credentials.json
 
-      # ── 5. Run the pipeline
-      #       All secrets injected as env vars — nothing touches the filesystem
-      #       except the credentials file written above.
+      # ── 5. Detect run type and execute pipeline
+      #       9 AM CT (14:00 UTC) = full run with Statcast
+      #       All other scheduled times = skip Statcast (fast lineup refresh)
+      #       Manual runs respect the skip_statcast input
       - name: Run MLB pipeline
         env:
           DB_BACKEND: supabase
@@ -68,9 +86,25 @@ jobs:
           RUN_DATE: ${{ github.event.inputs.run_date }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           GIT_SHA: ${{ github.sha }}
-        run: python run_pipeline.py --today
+          MANUAL_SKIP_STATCAST: ${{ github.event.inputs.skip_statcast || 'false' }}
+        run: |
+          HOUR_UTC=$(date -u +%H)
+          MINUTE_UTC=$(date -u +%M)
 
-      # ── 6. Upload logs as artifact (30-day retention)
+          # Determine if this is the morning full run (14:00 UTC = 9 AM CT)
+          # or an intraday lineup refresh
+          if [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
+            echo "Manual override: skipping Statcast"
+            python run_pipeline.py --today --skip-statcast
+          elif [ "$HOUR_UTC" = "14" ] && [ "$MINUTE_UTC" -lt "30" ]; then
+            echo "Morning full run (${HOUR_UTC}:${MINUTE_UTC} UTC) — including Statcast"
+            python run_pipeline.py --today
+          else
+            echo "Intraday refresh (${HOUR_UTC}:${MINUTE_UTC} UTC) — skipping Statcast"
+            python run_pipeline.py --today --skip-statcast
+          fi
+
+      # ── 6. Upload logs
       - name: Upload pipeline logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,17 +113,3 @@ jobs:
           path: logs/
           retention-days: 30
           if-no-files-found: ignore
-
-      # ── 7. Notify on failure via GitHub issue (optional — remove if not needed)
-      # - name: Create issue on failure
-      #   if: failure()
-      #   uses: actions/github-script@v7
-      #   with:
-      #     script: |
-      #       github.rest.issues.create({
-      #         owner: context.repo.owner,
-      #         repo: context.repo.repo,
-      #         title: `Pipeline failed: ${new Date().toISOString().split('T')[0]}`,
-      #         body: `Run ID: ${context.runId}\nSee: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-      #         labels: ['pipeline-failure']
-      #       })

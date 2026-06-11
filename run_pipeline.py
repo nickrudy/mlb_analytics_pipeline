@@ -38,7 +38,7 @@ def main():
     parser.add_argument("--today",           action="store_true")
     parser.add_argument("--seed-dimensions", action="store_true",
                         help="Refresh teams/venues/rosters (run once at season start)")
-    parser.add_argument("--statcast-days",   type=int, default=35)
+    parser.add_argument("--statcast-days",   type=int, default=2)
     parser.add_argument("--skip-statcast",   action="store_true")
     parser.add_argument("--skip-weather",    action="store_true")
     parser.add_argument("--windows",         default="SEASON,L30D,L14D,L7D")

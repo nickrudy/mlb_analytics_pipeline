@@ -123,7 +123,7 @@ def main():
         if DB_BACKEND == "sqlite":
             conn.execute("PRAGMA foreign_keys=OFF;")
             conn.execute("PRAGMA journal_mode=WAL;")
-        for wc in [w.strip() for w in args.windows.split(",")]:
+        for wc in ["SEASON"] + [w.strip() for w in args.windows.split(",")]:
             compute_match_scores(conn, as_of_date=game_date, window_code=wc)
 
     # ── Step 7: Export to Google Sheets ───────────────────────────────────

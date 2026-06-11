@@ -38,7 +38,7 @@ class _wrap:
     @staticmethod
     def _translate(sql):
         import re
-        return re.sub(r':([a-zA-Z_][a-zA-Z0-9_]*)', r'%(\1)s', sql)
+        return re.sub(r'(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)', r'%(\1)s', sql)
 
     def execute(self, sql, p=None):
         cur = self._c.cursor()

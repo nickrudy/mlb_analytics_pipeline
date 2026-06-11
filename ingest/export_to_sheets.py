@@ -125,8 +125,9 @@ def write_to_sheets(headers: list, rows: list,
     sheet.clear()
     log.info("Sheet cleared.")
     all_rows = [headers] + rows
-    cleaned  = [
-        [("" if v is None else v) for v in row]
+    from decimal import Decimal
+    cleaned = [
+        [("" if v is None else (float(v) if isinstance(v, Decimal) else v)) for v in row]
         for row in all_rows
     ]
     sheet.update(range_name="A1", values=cleaned)

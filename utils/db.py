@@ -66,7 +66,7 @@ class _cursor_wrap:
     @staticmethod
     def _translate(sql):
         import re
-        return re.sub(r':([a-zA-Z_][a-zA-Z0-9_]*)', r'%(\1)s', sql)
+        return re.sub(r'(?<!:):([a-zA-Z_][a-zA-Z0-9_]*)', r'%(\1)s', sql)
 
     def execute(self, sql, p=None):
         self._cur.execute(self._translate(sql), p or {})

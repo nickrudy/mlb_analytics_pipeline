@@ -45,7 +45,7 @@ SELECT
     m.pitch_type_match_score       AS pt_score,
     m.zone_match_score             AS zone_score,
     m.projected_batting_avg        AS final_projection,
-    ROUND((m.projected_batting_avg - m.batter_vs_hand_batting_avg)::numeric, 4) AS delta,
+    (m.projected_batting_avg - m.batter_vs_hand_batting_avg) AS delta,
     m.park_adjustment_factor,
     m.weather_adjustment_factor,
     w.temperature_f,

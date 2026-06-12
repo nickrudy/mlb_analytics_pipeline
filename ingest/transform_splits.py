@@ -13,7 +13,7 @@ round-trips. Reduces pitcher_zone_profile insert from 20 min to ~10 sec.
 import math
 import logging
 import argparse
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 from utils.db import get_connection, get_engine, DB_BACKEND
 from utils.db_bulk import bulk_upsert
 
@@ -603,12 +603,14 @@ def build_matchups(conn, as_of_date, window_code="SEASON"):
             "park_adjustment_factor": park_adj,
             "weather_adjustment_factor": weather_adj,
             "projected_batting_avg": projected_avg,
+            "ingested_at": datetime.now(timezone.utc).isoformat(),
         })
 
     n = bulk_upsert(conn, "fact_matchup_batter_pitcher", rows,
         conflict_cols="as_of_date,game_id,batter_id,pitcher_id,window_code",
         update_cols=["batter_vs_hand_batting_avg","projected_batting_avg",
-                     "park_adjustment_factor","weather_adjustment_factor"])
+                     "park_adjustment_factor","weather_adjustment_factor",
+                     "ingested_at"])
     conn.commit()
     log.info("Matchups built: %d written, %d skipped (no pitcher), %d skipped (no batter).",
              n, skipped_pitcher, skipped_batter)

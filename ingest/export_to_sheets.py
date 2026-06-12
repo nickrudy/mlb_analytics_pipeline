@@ -58,7 +58,8 @@ SELECT
     m.projected_total_bases,
     m.projected_hr_probability,
     m.batter_barrel_rate,
-    m.pitcher_barrel_rate_allowed
+    m.pitcher_barrel_rate_allowed,
+    m.ingested_at
 FROM fact_matchup_batter_pitcher m
 JOIN fact_games g
     ON  g.game_id    = m.game_id

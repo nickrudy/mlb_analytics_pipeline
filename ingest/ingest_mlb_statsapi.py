@@ -440,49 +440,67 @@ def ingest_lineups(conn, game_id: int, as_of_date: str) -> None:
         for slot_idx, pid in enumerate(lineup or batters, start=1):
             if not pid:
                 continue
-            conn.execute(_upsert_lineup_sql(), {
-                "as_of_date":           as_of_date,
-                "game_id":              game_id,
-                "team_id":              team_id,
-                "player_id":            pid,
-                "lineup_slot":          slot_idx,
-                "batting_order":        str(slot_idx * 100),
-                "starter_flag":         1,
-                "confirmed_flag":       confirmed,
-                "projected_flag":       1 - confirmed,
-                "opponent_pitcher_id":  opp_pid,
-                "opponent_pitcher_hand":opp_hand,
-            })
+            try:
+                cur.execute(_upsert_lineup_sql(), {
+                    "as_of_date":           as_of_date,
+                    "game_id":              game_id,
+                    "team_id":              team_id,
+                    "player_id":            pid,
+                    "lineup_slot":          slot_idx,
+                    "batting_order":        str(slot_idx * 100),
+                    "starter_flag":         1,
+                    "confirmed_flag":       confirmed,
+                    "projected_flag":       1 - confirmed,
+                    "opponent_pitcher_id":  opp_pid,
+                    "opponent_pitcher_hand":opp_hand,
+                })
+            except Exception as e:
+                log.error("  Lineup insert failed game_id=%s player_id=%s: %s", game_id, pid, e)
+                raise
 
         col = (
             "confirmed_home_lineup_flag"
             if side == "home"
             else "confirmed_away_lineup_flag"
         )
-        conn.execute(
-            f"UPDATE fact_games SET {col}=:val WHERE as_of_date=:aod AND game_id=:gid",
-            {"val": confirmed, "aod": as_of_date, "gid": game_id},
-        )
+        try:
+            cur.execute(
+                f"UPDATE fact_games SET {col}=:val WHERE as_of_date=:aod AND game_id=:gid",
+                {"val": confirmed, "aod": as_of_date, "gid": game_id},
+            )
+        except Exception as e:
+            log.error("  fact_games update failed game_id=%s: %s", game_id, e)
+            raise
     conn.commit()
 
 
 # ── Main ───────────────────────────────────────────────────────────────────
 
 def run(game_date: str, as_of_date: str, seed_dimensions: bool = False) -> None:
-    with get_connection() as conn:
+    def _pragma(conn):
         if DB_BACKEND == "sqlite":
             conn.execute("PRAGMA foreign_keys=OFF;")
             conn.execute("PRAGMA journal_mode=WAL;")
 
-        if seed_dimensions:
+    if seed_dimensions:
+        with get_connection() as conn:
+            _pragma(conn)
             ingest_teams_and_venues(conn)
             ingest_all_rosters(conn)
 
+    # Each operation gets its own connection — avoids transaction pooler
+    # state issues on Supabase where conn.commit() may return the backend
+    # connection to the pool, leaving the shared conn object in a bad state.
+    with get_connection() as conn:
+        _pragma(conn)
         game_ids = ingest_schedule(conn, game_date, as_of_date)
-        for gid in game_ids:
-            log.info("  Lineups: game_id=%s", gid)
+
+    for gid in game_ids:
+        log.info("  Lineups: game_id=%s", gid)
+        with get_connection() as conn:
+            _pragma(conn)
             ingest_lineups(conn, gid, as_of_date)
-            time.sleep(0.2)
+        time.sleep(0.2)
 
     log.info("MLB Stats API ingestion complete.")
 

@@ -47,11 +47,19 @@ def _kmh_to_mph(k): return round(k * 0.621371, 1) if k is not None else None
 
 # ── HTTP helper ────────────────────────────────────────────────────────────
 
-def _get(url: str, params: dict) -> dict:
+def _get(url: str, params: dict, retries: int = 3) -> dict:
     qs  = urllib.parse.urlencode(params)
     req = urllib.request.Request(f"{url}?{qs}")
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        return json.loads(resp.read().decode())
+    for attempt in range(1, retries + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return json.loads(resp.read().decode())
+        except Exception as e:
+            if attempt == retries:
+                raise
+            log.warning("  Open-Meteo retry %d/%d after error: %s", attempt, retries, e)
+            time.sleep(attempt * 2)
+    return {}
 
 
 def _safe_float(lst: list):

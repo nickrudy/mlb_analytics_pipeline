@@ -114,7 +114,8 @@ def main():
             start, end = _window_dates(wc, game_date)
             transform_splits(conn, as_of_date=game_date, window_code=wc,
                              start_date=start, end_date=end)
-        build_matchups(conn, as_of_date=game_date)
+        for wc in ["SEASON"] + [w.strip() for w in args.windows.split(",")]:
+            build_matchups(conn, as_of_date=game_date, window_code=wc)
 
     # ── Step 6: Match scores ───────────────────────────────────────────────
     log.info("=== Step 6: Match scores ===")

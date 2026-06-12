@@ -77,6 +77,24 @@ jobs:
       #       All other scheduled times = skip Statcast (fast lineup refresh)
       #       Manual runs respect the skip_statcast input
       - name: Run MLB pipeline
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 60
+          max_attempts: 3
+          retry_wait_seconds: 60
+          command: |
+            HOUR_UTC=$(date -u +%H)
+            MINUTE_UTC=$(date -u +%M)
+            if [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
+              echo "Manual override: skipping Statcast"
+              python run_pipeline.py --today --skip-statcast
+            elif [ "$HOUR_UTC" = "14" ] && [ "$MINUTE_UTC" -lt "30" ]; then
+              echo "Morning full run (${HOUR_UTC}:${MINUTE_UTC} UTC) — including Statcast"
+              python run_pipeline.py --today
+            else
+              echo "Intraday refresh (${HOUR_UTC}:${MINUTE_UTC} UTC) — skipping Statcast"
+              python run_pipeline.py --today --skip-statcast
+            fi
         env:
           DB_BACKEND: supabase
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -87,22 +105,6 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           GIT_SHA: ${{ github.sha }}
           MANUAL_SKIP_STATCAST: ${{ github.event.inputs.skip_statcast || 'false' }}
-        run: |
-          HOUR_UTC=$(date -u +%H)
-          MINUTE_UTC=$(date -u +%M)
-
-          # Determine if this is the morning full run (14:00 UTC = 9 AM CT)
-          # or an intraday lineup refresh
-          if [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
-            echo "Manual override: skipping Statcast"
-            python run_pipeline.py --today --skip-statcast
-          elif [ "$HOUR_UTC" = "14" ] && [ "$MINUTE_UTC" -lt "30" ]; then
-            echo "Morning full run (${HOUR_UTC}:${MINUTE_UTC} UTC) — including Statcast"
-            python run_pipeline.py --today
-          else
-            echo "Intraday refresh (${HOUR_UTC}:${MINUTE_UTC} UTC) — skipping Statcast"
-            python run_pipeline.py --today --skip-statcast
-          fi
 
       # ── 6. Upload logs
       - name: Upload pipeline logs

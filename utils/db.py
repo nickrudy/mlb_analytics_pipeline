@@ -22,6 +22,7 @@ Usage in any pipeline script:
 import os
 import sqlite3
 import contextlib
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -140,16 +141,24 @@ def get_connection():
             raise EnvironmentError("SUPABASE_DB_URL is not set.")
 
         parsed = urlparse(_SUPABASE_URL)
-        conn = psycopg2.connect(
-            host=parsed.hostname,
-            port=parsed.port or 5432,
-            dbname=parsed.path.lstrip("/"),
-            user=parsed.username,
-            password=parsed.password,
-            connect_timeout=30,
-            keepalives_idle=30,
-            sslmode="require",
-        )
+        for _attempt in range(1, 4):
+            try:
+                conn = psycopg2.connect(
+                    host=parsed.hostname,
+                    port=parsed.port or 5432,
+                    dbname=parsed.path.lstrip("/"),
+                    user=parsed.username,
+                    password=parsed.password,
+                    connect_timeout=30,
+                    keepalives_idle=30,
+                    sslmode="require",
+                )
+                break
+            except Exception as _e:
+                if _attempt == 3:
+                    raise
+                print(f"[db] Connection attempt {_attempt} failed: {_e} — retrying in {_attempt * 5}s")
+                time.sleep(_attempt * 5)
     else:
         _SQLITE_PATH.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(_SQLITE_PATH)

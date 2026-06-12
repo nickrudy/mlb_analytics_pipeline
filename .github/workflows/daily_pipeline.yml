@@ -19,6 +19,7 @@ on:
     - cron: "0 22 * * *"    # 5:00 PM CT  — skip Statcast
     - cron: "30 23 * * *"   # 6:30 PM CT  — skip Statcast
     - cron: "0 1 * * *"     # 8:00 PM CT  — skip Statcast
+    - cron: "0 13 * * 1"    # 8:00 AM CT Monday — weekly seed-dimensions refresh
 
   # ── Manual trigger ────────────────────────────────────────────────────────
   workflow_dispatch:
@@ -85,7 +86,11 @@ jobs:
           command: |
             HOUR_UTC=$(date -u +%H)
             MINUTE_UTC=$(date -u +%M)
-            if [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
+            DAY_OF_WEEK=$(date -u +%u)  # 1=Monday
+            if [ "$DAY_OF_WEEK" = "1" ] && [ "$HOUR_UTC" = "13" ]; then
+              echo "Monday seed-dimensions run"
+              python run_pipeline.py --today --seed-dimensions
+            elif [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
               echo "Manual override: skipping Statcast"
               python run_pipeline.py --today --skip-statcast
             elif [ "$HOUR_UTC" = "14" ] && [ "$MINUTE_UTC" -lt "30" ]; then

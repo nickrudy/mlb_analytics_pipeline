@@ -127,8 +127,12 @@ def write_to_sheets(headers: list, rows: list,
     log.info("Sheet cleared.")
     all_rows = [headers] + rows
     from decimal import Decimal
+    from datetime import datetime
     cleaned = [
-        [("" if v is None else (float(v) if isinstance(v, Decimal) else v)) for v in row]
+        [("" if v is None else
+        (float(v) if isinstance(v, Decimal) else
+        (v.isoformat() if isinstance(v, datetime) else v)))
+        for v in row]
         for row in all_rows
     ]
     sheet.update(range_name="A1", values=cleaned)

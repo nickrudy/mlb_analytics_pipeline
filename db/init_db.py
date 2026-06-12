@@ -705,6 +705,7 @@ DDL_STATEMENTS = [
         projected_hr_probability            REAL,
         batter_barrel_rate                  REAL,
         pitcher_barrel_rate_allowed         REAL,
+        ingested_at                         TEXT,
         PRIMARY KEY (as_of_date, game_id, batter_id, pitcher_id, window_code),
         FOREIGN KEY (batter_id)        REFERENCES dim_players(player_id),
         FOREIGN KEY (pitcher_id)       REFERENCES dim_players(player_id),

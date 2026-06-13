@@ -41,7 +41,7 @@ def main():
     parser.add_argument("--statcast-days",   type=int, default=2)
     parser.add_argument("--skip-statcast",   action="store_true")
     parser.add_argument("--skip-weather",    action="store_true")
-    parser.add_argument("--windows", default="L30D,L14D,L7D")
+    parser.add_argument("--windows", default="SEASON,L30D,L14D,L7D")
     args = parser.parse_args()
 
     game_date = date.today().isoformat() if args.today else args.date

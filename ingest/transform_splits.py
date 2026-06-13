@@ -13,7 +13,7 @@ round-trips. Reduces pitcher_zone_profile insert from 20 min to ~10 sec.
 import math
 import logging
 import argparse
-from datetime import date, timedelta, datetime, timezone
+from datetime import date, timedelta
 from utils.db import get_connection, get_engine, DB_BACKEND
 from utils.db_bulk import bulk_upsert
 
@@ -463,6 +463,80 @@ def _build_pitcher_zone_profile(conn, df, as_of_date, season, window_code):
     log.info("    pitcher_zone_profile: %d rows", n)
 
 
+# ── Power profile builders ─────────────────────────────────────────────────
+
+def _build_batter_power_profile(conn, df, as_of_date, season, window_code):
+    rows = []
+    in_play_df = df[df["is_in_play"]]
+    for bid, grp in df.groupby("batter_id"):
+        ip_grp   = in_play_df[in_play_df["batter_id"] == bid]
+        bbe      = len(ip_grp)
+        pa       = int(grp["is_ab_end"].sum())
+        hr       = int(grp["is_home_run"].sum())
+        barrels  = int(ip_grp["is_barrel"].sum())
+        hard_hit = int(ip_grp["is_hard_hit"].sum())
+
+        # vs RHP / LHP splits
+        grp_rhp  = grp[grp["p_throws"] == "R"]   if "p_throws" in grp.columns else grp.iloc[0:0]
+        grp_lhp  = grp[grp["p_throws"] == "L"]   if "p_throws" in grp.columns else grp.iloc[0:0]
+        ip_rhp   = ip_grp[ip_grp["p_throws"] == "R"] if "p_throws" in ip_grp.columns else ip_grp.iloc[0:0]
+        ip_lhp   = ip_grp[ip_grp["p_throws"] == "L"] if "p_throws" in ip_grp.columns else ip_grp.iloc[0:0]
+
+        pa_rhp   = int(grp_rhp["is_ab_end"].sum())
+        pa_lhp   = int(grp_lhp["is_ab_end"].sum())
+        bbe_rhp  = len(ip_rhp)
+        bbe_lhp  = len(ip_lhp)
+
+        rows.append({
+            "as_of_date":           as_of_date,
+            "player_id":            int(bid),
+            "season":               season,
+            "window_code":          window_code,
+            "hr_per_pa":            _safe_div(hr, pa),
+            "barrels_per_pa":       _safe_div(barrels, bbe),
+            "barrels_per_pa_vs_rhp":_safe_div(int(ip_rhp["is_barrel"].sum()), bbe_rhp),
+            "barrels_per_pa_vs_lhp":_safe_div(int(ip_lhp["is_barrel"].sum()), bbe_lhp),
+            "hard_hit_rate_vs_rhp": _safe_div(int(ip_rhp["is_hard_hit"].sum()), bbe_rhp),
+            "hard_hit_rate_vs_lhp": _safe_div(int(ip_lhp["is_hard_hit"].sum()), bbe_lhp),
+            "batted_ball_events":   bbe,
+        })
+    n = bulk_upsert(conn, "fact_batter_power_profile", rows,
+        conflict_cols="as_of_date,player_id,season,window_code",
+        update_cols=["hr_per_pa","barrels_per_pa","barrels_per_pa_vs_rhp",
+                     "barrels_per_pa_vs_lhp","hard_hit_rate_vs_rhp",
+                     "hard_hit_rate_vs_lhp","batted_ball_events"])
+    log.info("    batter_power_profile: %d rows", n)
+
+
+def _build_pitcher_hr_vulnerability(conn, df, as_of_date, season, window_code):
+    rows = []
+    in_play_df = df[df["is_in_play"]]
+    for (pid, hand), grp in df.groupby(["pitcher_id", "stand"]):
+        if not hand:
+            continue
+        ip_grp  = in_play_df[(in_play_df["pitcher_id"] == pid) &
+                              (in_play_df["stand"] == hand)]
+        bbe     = len(ip_grp)
+        bf      = int(grp["is_ab_end"].sum())
+        hr_a    = int(grp["is_home_run"].sum())
+        barrels = int(ip_grp["is_barrel"].sum())
+
+        rows.append({
+            "as_of_date":          as_of_date,
+            "pitcher_id":          int(pid),
+            "season":              season,
+            "split_hand":          hand,
+            "window_code":         window_code,
+            "hr_per_bf_allowed":   _safe_div(hr_a, bf),
+            "barrel_rate_allowed": _safe_div(barrels, bbe),
+            "batted_ball_events":  bbe,
+        })
+    n = bulk_upsert(conn, "fact_pitcher_hr_vulnerability", rows,
+        conflict_cols="as_of_date,pitcher_id,season,split_hand,window_code",
+        update_cols=["hr_per_bf_allowed","barrel_rate_allowed","batted_ball_events"])
+    log.info("    pitcher_hr_vulnerability: %d rows", n)
+
+
 # ── Main transform ─────────────────────────────────────────────────────────
 
 def transform_splits(conn, as_of_date, window_code, start_date, end_date):
@@ -497,10 +571,12 @@ def transform_splits(conn, as_of_date, window_code, start_date, end_date):
     _build_batter_hand_splits(conn, df, as_of_date, season, window_code)
     _build_batter_pitch_type_splits(conn, df, as_of_date, season, window_code)
     _build_batter_zone_splits(conn, df, as_of_date, season, window_code)
+    _build_batter_power_profile(conn, df, as_of_date, season, window_code)
     _build_pitcher_overall(conn, df, as_of_date, season, window_code)
     _build_pitcher_hand_splits(conn, df, as_of_date, season, window_code)
     _build_pitcher_pitch_mix(conn, df, as_of_date, season, window_code)
     _build_pitcher_zone_profile(conn, df, as_of_date, season, window_code)
+    _build_pitcher_hr_vulnerability(conn, df, as_of_date, season, window_code)
     conn.commit()
     log.info("  Transform complete for window=%s.", window_code)
 
@@ -603,14 +679,12 @@ def build_matchups(conn, as_of_date, window_code="SEASON"):
             "park_adjustment_factor": park_adj,
             "weather_adjustment_factor": weather_adj,
             "projected_batting_avg": projected_avg,
-            "ingested_at": datetime.now(timezone.utc).isoformat(),
         })
 
     n = bulk_upsert(conn, "fact_matchup_batter_pitcher", rows,
         conflict_cols="as_of_date,game_id,batter_id,pitcher_id,window_code",
         update_cols=["batter_vs_hand_batting_avg","projected_batting_avg",
-                     "park_adjustment_factor","weather_adjustment_factor",
-                     "ingested_at"])
+                     "park_adjustment_factor","weather_adjustment_factor"])
     conn.commit()
     log.info("Matchups built: %d written, %d skipped (no pitcher), %d skipped (no batter).",
              n, skipped_pitcher, skipped_batter)

@@ -52,6 +52,9 @@ def main():
     from utils.db import DB_BACKEND, get_connection
     log.info("=== Pipeline starting | backend=%s | date=%s ===", DB_BACKEND, game_date)
 
+    # Deduplicated window list used in Steps 5 and 6
+    all_windows = list(dict.fromkeys(["SEASON"] + [w.strip() for w in args.windows.split(",")]))
+
     # ── Step 1: Init DB ────────────────────────────────────────────────────
     # SQLite only — Supabase schema is pre-created by migration script
     if DB_BACKEND == "sqlite":
@@ -110,11 +113,20 @@ def main():
             conn.execute("PRAGMA foreign_keys=OFF;")
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA synchronous=NORMAL;")
-        for wc in [w.strip() for w in args.windows.split(",")]:
-            start, end = _window_dates(wc, game_date)
-            transform_splits(conn, as_of_date=game_date, window_code=wc,
-                             start_date=start, end_date=end)
-        all_windows = list(dict.fromkeys(["SEASON"] + [w.strip() for w in args.windows.split(",")]))
+
+        # Statcast-derived split tables only change when new Statcast data is
+        # pulled. Skip the expensive table rewrites on intraday refreshes
+        # (--skip-statcast) to avoid burning the Supabase Nano disk IO budget.
+        # The morning full run populates all split tables; intraday runs
+        # rebuild matchups only against the already-populated tables.
+        if not args.skip_statcast:
+            for wc in all_windows:
+                start, end = _window_dates(wc, game_date)
+                transform_splits(conn, as_of_date=game_date, window_code=wc,
+                                 start_date=start, end_date=end)
+        else:
+            log.info("  Split transforms SKIPPED (--skip-statcast) — using existing split data.")
+
         for wc in all_windows:
             build_matchups(conn, as_of_date=game_date, window_code=wc)
 
@@ -125,9 +137,9 @@ def main():
         if DB_BACKEND == "sqlite":
             conn.execute("PRAGMA foreign_keys=OFF;")
             conn.execute("PRAGMA journal_mode=WAL;")
-        all_windows = list(dict.fromkeys(["SEASON"] + [w.strip() for w in args.windows.split(",")]))
         for wc in all_windows:
             compute_match_scores(conn, as_of_date=game_date, window_code=wc)
+
     # ── Step 7: Export to Google Sheets ───────────────────────────────────
     log.info("=== Step 7: Export to Google Sheets ===")
     try:

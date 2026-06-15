@@ -2,23 +2,26 @@ name: MLB Analytics Pipeline — Daily Run
 
 on:
   # ── Scheduled triggers (all times UTC, CDT = UTC-5) ──────────────────────
-  # 9:00 AM CT  = 14:00 UTC — full morning run (includes Statcast)
-  # 11:00 AM CT = 16:00 UTC — lineup refresh
-  # 12:30 PM CT = 17:30 UTC — lineup refresh
-  # 2:00 PM CT  = 19:00 UTC — lineup refresh
-  # 3:30 PM CT  = 20:30 UTC — lineup refresh
-  # 5:00 PM CT  = 22:00 UTC — lineup refresh (evening games posting)
-  # 6:30 PM CT  = 23:30 UTC — lineup refresh
+  # 9:30 AM CT  = 14:30 UTC — full morning run (includes Statcast)
+  # 11:00 AM CT = 16:00 UTC — early afternoon lineup watch
+  # 11:30 AM CT = 16:30 UTC — 12:05 PM game coverage (buffer for drift)
+  # 1:00 PM CT  = 18:00 UTC — afternoon game pre-pitch + lineup watch
+  # 2:00 PM CT  = 19:00 UTC — main evening lineup posting window
+  # 3:00 PM CT  = 20:00 UTC — evening lineup confirmation
+  # 4:00 PM CT  = 21:00 UTC — pre-evening game final check
+  # 6:00 PM CT  = 23:00 UTC — evening games, late lineup changes
   # 8:00 PM CT  = 01:00 UTC — west coast games
+  # 8:00 AM CT Monday = 13:00 UTC — weekly seed-dimensions roster refresh
   schedule:
-    - cron: "0 14 * * *"    # 9:00 AM CT  — full run with Statcast
-    - cron: "0 16 * * *"    # 11:00 AM CT — skip Statcast
-    - cron: "30 17 * * *"   # 12:30 PM CT — skip Statcast
-    - cron: "0 19 * * *"    # 2:00 PM CT  — skip Statcast
-    - cron: "30 20 * * *"   # 3:30 PM CT  — skip Statcast
-    - cron: "0 22 * * *"    # 5:00 PM CT  — skip Statcast
-    - cron: "30 23 * * *"   # 6:30 PM CT  — skip Statcast
-    - cron: "0 1 * * *"     # 8:00 PM CT  — skip Statcast
+    - cron: "30 14 * * *"   # 9:30 AM CT  — full run with Statcast
+    - cron: "0 16 * * *"    # 11:00 AM CT — early afternoon lineup watch
+    - cron: "30 16 * * *"   # 11:30 AM CT — 12:05 PM game coverage
+    - cron: "0 18 * * *"    # 1:00 PM CT  — afternoon game pre-pitch
+    - cron: "0 19 * * *"    # 2:00 PM CT  — main evening lineup window
+    - cron: "0 20 * * *"    # 3:00 PM CT  — evening lineup confirmation
+    - cron: "0 21 * * *"    # 4:00 PM CT  — pre-evening game final check
+    - cron: "0 23 * * *"    # 6:00 PM CT  — evening games, late changes
+    - cron: "0 1 * * *"     # 8:00 PM CT  — west coast games
     - cron: "0 13 * * 1"    # 8:00 AM CT Monday — weekly seed-dimensions refresh
 
   # ── Manual trigger ────────────────────────────────────────────────────────
@@ -74,8 +77,10 @@ jobs:
           echo '${{ secrets.GSHEETS_SERVICE_ACCOUNT_JSON }}' > config/sheets_credentials.json
 
       # ── 5. Detect run type and execute pipeline
-      #       9 AM CT (14:00 UTC) = full run with Statcast
-      #       All other scheduled times = skip Statcast (fast lineup refresh)
+      #       9:30 AM CT (14:30 UTC) = full run with Statcast
+      #         — detected by HOUR_UTC=14; GitHub drift may push into hour 15
+      #         — all other hours skip Statcast
+      #       Monday 8:00 AM CT (13:00 UTC) = seed-dimensions run
       #       Manual runs respect the skip_statcast input
       - name: Run MLB pipeline
         uses: nick-fields/retry@v3
@@ -93,7 +98,7 @@ jobs:
             elif [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
               echo "Manual override: skipping Statcast"
               python run_pipeline.py --today --skip-statcast
-            elif [ "$HOUR_UTC" = "14" ] && [ "$MINUTE_UTC" -lt "30" ]; then
+            elif [ "$HOUR_UTC" = "14" ] || [ "$HOUR_UTC" = "15" ]; then
               echo "Morning full run (${HOUR_UTC}:${MINUTE_UTC} UTC) — including Statcast"
               python run_pipeline.py --today
             else

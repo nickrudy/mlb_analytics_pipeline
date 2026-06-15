@@ -329,6 +329,61 @@ def ingest_all_rosters(conn) -> None:
     log.info("Rosters done.")
 
 
+# ── Venue auto-seeding ─────────────────────────────────────────────────────
+
+def _maybe_seed_venue(conn, venue_id: int, venue_name: str,
+                      lat: float, lon: float, seen: set) -> None:
+    """
+    Insert a minimal dim_venues row if the venue_id is not already present.
+    Called from ingest_schedule() for every game venue — prevents FK-less
+    inserts landing in fact_games without a corresponding dim_venues row,
+    and eliminates the need for manual venue seeding when new parks appear.
+
+    Park factors default to neutral (1.0 / 100 / 100) and should be tuned
+    manually or at season end when empirical data is available.
+    """
+    if venue_id in seen:
+        return
+    seen.add(venue_id)
+
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM dim_venues WHERE venue_id = :vid", {"vid": venue_id})
+    if cur.fetchone():
+        return  # Already seeded — nothing to do
+
+    # Fetch full venue details from MLB Stats API
+    name = venue_name  # fallback if API call fails
+    city = state = tz = None
+    fetch_lat, fetch_lon = lat, lon
+    try:
+        vdata = _get(f"{MLB_BASE}/venues/{venue_id}", {"hydrate": "location"})
+        v     = vdata.get("venues", [{}])[0]
+        loc   = v.get("location", {})
+        coords = loc.get("defaultCoordinates", {})
+        name      = v.get("name") or name
+        city      = loc.get("city")
+        state     = loc.get("stateAbbrev")
+        tz        = v.get("timeZone", {}).get("id")
+        fetch_lat = coords.get("latitude")  or fetch_lat
+        fetch_lon = coords.get("longitude") or fetch_lon
+    except Exception as e:
+        log.warning("Could not fetch venue details for %s: %s — using schedule data", venue_id, e)
+
+    conn.execute(_upsert_venue_sql(), {
+        "venue_id":       venue_id,
+        "venue_name":     name,
+        "city":           city,
+        "state":          state,
+        "time_zone_name": tz,
+        "roof_type":      None,
+        "surface_type":   None,
+        "lat":            fetch_lat,
+        "lon":            fetch_lon,
+        "altitude_ft":    None,
+    })
+    log.info("  Auto-seeded venue: %s (%s)", name, venue_id)
+
+
 # ── Schedule & Probable Starters ───────────────────────────────────────────
 
 def ingest_schedule(conn, game_date: str, as_of_date: str) -> list:
@@ -343,6 +398,7 @@ def ingest_schedule(conn, game_date: str, as_of_date: str) -> list:
     )
     now_utc  = datetime.now(timezone.utc).isoformat()
     game_ids = []
+    seen_venues = set()  # track venues seeded this run to avoid redundant lookups
     for day in data.get("dates", []):
         for game in day.get("games", []):
             gid = game.get("gamePk")
@@ -356,6 +412,14 @@ def ingest_schedule(conn, game_date: str, as_of_date: str) -> list:
             status = game.get("status", {}).get("statusCode")
             season = game.get("season")
             gdt    = game.get("gameDate")
+
+            # Auto-seed venue if not present — prevents missing dim_venues rows
+            venue     = game.get("venue", {})
+            venue_id  = venue.get("id")
+            venue_name = venue.get("name")
+            if venue_id:
+                _maybe_seed_venue(conn, venue_id, venue_name,
+                                  lat=None, lon=None, seen=seen_venues)
 
             conn.execute(_upsert_schedule_sql(), {
                 "as_of_date":               as_of_date,

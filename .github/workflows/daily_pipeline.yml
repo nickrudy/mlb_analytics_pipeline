@@ -77,11 +77,14 @@ jobs:
           echo '${{ secrets.GSHEETS_SERVICE_ACCOUNT_JSON }}' > config/sheets_credentials.json
 
       # ── 5. Detect run type and execute pipeline
-      #       9:30 AM CT (14:30 UTC) = full run with Statcast
-      #         — detected by HOUR_UTC=14; GitHub drift may push into hour 15
-      #         — all other hours skip Statcast
-      #       Monday 8:00 AM CT (13:00 UTC) = seed-dimensions run
-      #       Manual runs respect the skip_statcast input
+      #
+      #   Priority order:
+      #   1. Monday 8 AM CT (13:00 UTC)        → seed-dimensions
+      #   2. Manual dispatch, skip_statcast=false → full run with Statcast
+      #   3. Manual dispatch, skip_statcast=true  → skip Statcast
+      #   4. Scheduled, hour 14 or 15 UTC        → full run with Statcast
+      #   5. All other scheduled runs             → skip Statcast
+      #
       - name: Run MLB pipeline
         uses: nick-fields/retry@v3
         with:
@@ -95,7 +98,10 @@ jobs:
             if [ "$DAY_OF_WEEK" = "1" ] && [ "$HOUR_UTC" = "13" ]; then
               echo "Monday seed-dimensions run"
               python run_pipeline.py --today --seed-dimensions
-            elif [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
+            elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$MANUAL_SKIP_STATCAST" = "false" ]; then
+              echo "Manual full run — including Statcast"
+              python run_pipeline.py --today
+            elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
               echo "Manual override: skipping Statcast"
               python run_pipeline.py --today --skip-statcast
             elif [ "$HOUR_UTC" = "14" ] || [ "$HOUR_UTC" = "15" ]; then
@@ -115,6 +121,7 @@ jobs:
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           GIT_SHA: ${{ github.sha }}
           MANUAL_SKIP_STATCAST: ${{ github.event.inputs.skip_statcast || 'false' }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
 
       # ── 6. Upload logs
       - name: Upload pipeline logs

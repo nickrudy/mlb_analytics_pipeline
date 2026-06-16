@@ -779,6 +779,48 @@ DDL_STATEMENTS = [
       AND m.batter_id   = l.player_id
       AND m.pitcher_id  = l.opponent_pitcher_id
     """,
+
+    # ── Looker Studio flat export tables ──────────────────────────────────
+    # Truncated and rewritten each pipeline run by export_to_daily_tables.py.
+    # Simple flat selects — no joins or window functions at read time.
+
+    """
+    CREATE TABLE IF NOT EXISTS daily_top_batting (
+        batter_name         TEXT,
+        batter_team         TEXT,
+        game_datetime_ct    TEXT,
+        final_projection    REAL,
+        baseline_avg        REAL,
+        delta               REAL,
+        refreshed_at        TEXT
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS daily_top_bases (
+        batter_name             TEXT,
+        batter_team             TEXT,
+        game_datetime_ct        TEXT,
+        final_projection        REAL,
+        baseline_avg            REAL,
+        delta                   REAL,
+        projected_total_bases   REAL,
+        refreshed_at            TEXT
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS daily_top_hrs (
+        batter_name                 TEXT,
+        batter_team                 TEXT,
+        game_datetime_ct            TEXT,
+        final_projection            REAL,
+        baseline_avg                REAL,
+        delta                       REAL,
+        projected_hr_probability    REAL,
+        refreshed_at                TEXT
+    )
+    """,
 ]
 
 # ── Seed data ──────────────────────────────────────────────────────────────

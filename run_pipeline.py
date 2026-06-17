@@ -52,8 +52,10 @@ def main():
     from utils.db import DB_BACKEND, get_connection
     log.info("=== Pipeline starting | backend=%s | date=%s ===", DB_BACKEND, game_date)
 
+    # Deduplicated window list used in Steps 5 and 6
+    all_windows = list(dict.fromkeys(["SEASON"] + [w.strip() for w in args.windows.split(",")]))
+
     # ── Step 1: Init DB ────────────────────────────────────────────────────
-    # SQLite only — Supabase schema is pre-created by migration script
     if DB_BACKEND == "sqlite":
         log.info("=== Step 1: Init DB (SQLite) ===")
         from db.init_db import init_db
@@ -110,13 +112,46 @@ def main():
             conn.execute("PRAGMA foreign_keys=OFF;")
             conn.execute("PRAGMA journal_mode=WAL;")
             conn.execute("PRAGMA synchronous=NORMAL;")
-        for wc in [w.strip() for w in args.windows.split(",")]:
-            start, end = _window_dates(wc, game_date)
-            transform_splits(conn, as_of_date=game_date, window_code=wc,
-                             start_date=start, end_date=end)
-        all_windows = list(dict.fromkeys(["SEASON"] + [w.strip() for w in args.windows.split(",")]))
+
+        # Statcast-derived split tables only change when new Statcast data is
+        # pulled. Skip the expensive table rewrites on intraday refreshes
+        # (--skip-statcast) to avoid burning Supabase disk IO budget and
+        # causing statement timeouts on the 307k-row pitch table.
+        if not args.skip_statcast:
+            for wc in all_windows:
+                start, end = _window_dates(wc, game_date)
+                transform_splits(conn, as_of_date=game_date, window_code=wc,
+                                 start_date=start, end_date=end)
+        else:
+            log.info("  Split transforms SKIPPED (--skip-statcast) — using existing split data.")
+
         for wc in all_windows:
             build_matchups(conn, as_of_date=game_date, window_code=wc)
+
+    # ── Step 5b: Cleanup stale split data (full runs only) ────────────────
+    if not args.skip_statcast:
+        log.info("=== Step 5b: Cleanup stale split data ===")
+        stale_tables = [
+            "fact_pitcher_zone_profile",
+            "fact_batter_zone_splits",
+            "fact_batter_pitch_type_splits",
+            "fact_pitcher_pitch_mix",
+            "fact_batter_overall",
+            "fact_batter_hand_splits",
+            "fact_pitcher_overall",
+            "fact_pitcher_hand_splits",
+            "fact_batter_power_profile",
+            "fact_pitcher_hr_vulnerability",
+            "fact_matchup_batter_pitcher",
+        ]
+        with get_connection() as conn:
+            for table in stale_tables:
+                cur = conn.cursor()
+                cur.execute(
+                    f"DELETE FROM {table} WHERE as_of_date != :today",
+                    {"today": game_date},
+                )
+                log.info("  %s: stale rows deleted.", table)
 
     # ── Step 6: Match scores ───────────────────────────────────────────────
     log.info("=== Step 6: Match scores ===")
@@ -125,9 +160,9 @@ def main():
         if DB_BACKEND == "sqlite":
             conn.execute("PRAGMA foreign_keys=OFF;")
             conn.execute("PRAGMA journal_mode=WAL;")
-        all_windows = list(dict.fromkeys(["SEASON"] + [w.strip() for w in args.windows.split(",")]))
         for wc in all_windows:
             compute_match_scores(conn, as_of_date=game_date, window_code=wc)
+
     # ── Step 7: Export to Google Sheets ───────────────────────────────────
     log.info("=== Step 7: Export to Google Sheets ===")
     try:

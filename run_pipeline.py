@@ -16,7 +16,8 @@ Usage:
 import sys
 import logging
 import argparse
-from datetime import date, timedelta
+import zoneinfo
+from datetime import date, timedelta, datetime
 from pathlib import Path
 
 logging.basicConfig(
@@ -44,7 +45,8 @@ def main():
     parser.add_argument("--windows", default="SEASON,L30D,L14D,L7D")
     args = parser.parse_args()
 
-    game_date = date.today().isoformat() if args.today else args.date
+    game_date = (datetime.now(zoneinfo.ZoneInfo("America/Chicago")).date().isoformat() 
+             if args.today else args.date)
     if not game_date:
         parser.error("Provide --date YYYY-MM-DD or --today")
 

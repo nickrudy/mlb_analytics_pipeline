@@ -16,7 +16,7 @@ Usage:
 """
 import logging
 import argparse
-from datetime import date
+from datetime import date, datetime, timezone
 
 # -- CT date helper (avoids UTC-date bug after ~7 PM CT) --
 from zoneinfo import ZoneInfo as _ZI

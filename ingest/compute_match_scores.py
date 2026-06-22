@@ -17,6 +17,10 @@ Usage:
 import logging
 import argparse
 from datetime import date
+
+# -- CT date helper (avoids UTC-date bug after ~7 PM CT) --
+from zoneinfo import ZoneInfo as _ZI
+def _today_ct(): return __import__("datetime").datetime.now(_ZI("America/Chicago")).date().isoformat()
 from collections import defaultdict
 
 from utils.db import get_connection, DB_BACKEND
@@ -538,6 +542,7 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
             "projected_hr_probability": proj_hr_prob,
             "batter_barrel_rate":       batter_barrel_rate,
             "pitcher_barrel_rate_allowed": pitcher_barrel_rate,
+            "ingested_at": datetime.now(timezone.utc).isoformat(),
         })
 
     # ── Batch update via bulk_upsert ───────────────────────────────────
@@ -551,6 +556,7 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
                 "projected_slugging", "projected_total_bases",
                 "proj_at_bats_per_game", "projected_hr_probability",
                 "batter_barrel_rate", "pitcher_barrel_rate_allowed",
+                "ingested_at",
             ],
         )
         conn.commit()
@@ -568,7 +574,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     as_of = args.date if args.date else (
-        date.today().isoformat() if args.today else None
+        _today_ct() if args.today else None
     )
     if not as_of:
         parser.error("Provide --date YYYY-MM-DD or --today")

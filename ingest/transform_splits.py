@@ -13,7 +13,11 @@ round-trips. Reduces pitcher_zone_profile insert from 20 min to ~10 sec.
 import math
 import logging
 import argparse
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
+
+# -- CT date helper (avoids UTC-date bug after ~7 PM CT) --
+from zoneinfo import ZoneInfo as _ZI
+def _today_ct(): return __import__("datetime").datetime.now(_ZI("America/Chicago")).date().isoformat()
 from utils.db import get_connection, get_engine, DB_BACKEND
 from utils.db_bulk import bulk_upsert
 
@@ -679,12 +683,13 @@ def build_matchups(conn, as_of_date, window_code="SEASON"):
             "park_adjustment_factor": park_adj,
             "weather_adjustment_factor": weather_adj,
             "projected_batting_avg": projected_avg,
+            "ingested_at": datetime.now(timezone.utc).isoformat(),
         })
 
     n = bulk_upsert(conn, "fact_matchup_batter_pitcher", rows,
         conflict_cols="as_of_date,game_id,batter_id,pitcher_id,window_code",
         update_cols=["batter_vs_hand_batting_avg","projected_batting_avg",
-                     "park_adjustment_factor","weather_adjustment_factor"])
+                     "park_adjustment_factor","weather_adjustment_factor","ingested_at"])
     conn.commit()
     log.info("Matchups built: %d written, %d skipped (no pitcher), %d skipped (no batter).",
              n, skipped_pitcher, skipped_batter)
@@ -712,7 +717,7 @@ if __name__ == "__main__":
     parser.add_argument("--windows",  default="SEASON,L30D,L14D,L7D")
     parser.add_argument("--matchups", action="store_true")
     args = parser.parse_args()
-    as_of   = args.date or date.today().isoformat()
+    as_of   = args.date or _today_ct()
     windows = [w.strip() for w in args.windows.split(",")]
     with get_connection() as conn:
         if DB_BACKEND == "sqlite":

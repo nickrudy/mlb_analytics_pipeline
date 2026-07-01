@@ -2,27 +2,46 @@ name: MLB Analytics Pipeline — Daily Run
 
 on:
   # ── Scheduled triggers (all times UTC, CDT = UTC-5) ──────────────────────
-  # 9:30 AM CT  = 14:30 UTC — full morning run (includes Statcast)
-  # 11:00 AM CT = 16:00 UTC — early afternoon lineup watch
-  # 11:30 AM CT = 16:30 UTC — 12:05 PM game coverage (buffer for drift)
-  # 1:00 PM CT  = 18:00 UTC — afternoon game pre-pitch + lineup watch
-  # 2:00 PM CT  = 19:00 UTC — main evening lineup posting window
-  # 3:00 PM CT  = 20:00 UTC — evening lineup confirmation
-  # 4:00 PM CT  = 21:00 UTC — pre-evening game final check
-  # 6:00 PM CT  = 23:00 UTC — evening games, late lineup changes
-  # 8:00 PM CT  = 01:00 UTC — west coast games
-  # 8:00 AM CT Monday = 13:00 UTC — weekly seed-dimensions roster refresh
+  # NOTE: CDT (UTC-5) assumed. Revisit after DST ends (~Nov 1, 2026) if the
+  #       pipeline is still running — CST is UTC-6, a 1hr shift vs these crons.
+  #
+  # Minutes are deliberately off :00/:30 — GitHub Actions documents that
+  # scheduled workflows are delayed most often at the top of the hour, and
+  # community reports confirm 15-30+ min drift is common there.
+  #
+  # Full-run times were also shifted several hours earlier than the games
+  # they support, as a buffer against observed 1.5-2hr+ schedule drift.
+  # This is a first-pass estimate — validate against actual "Requested" vs
+  # job-start timestamps in the Actions tab over the next 1-2 weeks and
+  # adjust as needed.
+  #
+  # ── Full pipeline (Statcast + hand splits) ──
+  # ~6:06 AM CT = 11:06 UTC — full run with Statcast
+  #   (was 9:30 AM CT; Statcast lags 24-48hrs and hand splits reflect prior-day
+  #   game action, both already settled well before dawn — data availability
+  #   shouldn't be a blocker this early, but worth confirming over a week)
+  # ~8:12 AM CT Monday = 13:12 UTC — weekly seed-dimensions roster refresh
+  #
+  # ── Intraday lineup-watch runs (skip-Statcast) ──
+  # ~9:18 AM CT  = 14:18 UTC — early lineup watch (merges former 11:00/11:30 pair —
+  #                             redundant "drift buffer" trigger removed; this job's
+  #                             cancel-in-progress:true handles staleness instead)
+  # ~11:41 AM CT = 16:41 UTC — afternoon game pre-pitch + lineup watch
+  # ~12:27 PM CT = 17:27 UTC — main lineup posting window
+  # ~1:53 PM CT  = 18:53 UTC — lineup confirmation
+  # ~2:36 PM CT  = 19:36 UTC — pre-evening game final check
+  # ~4:22 PM CT  = 21:22 UTC — evening games, late lineup changes
+  # ~6:44 PM CT  = 23:44 UTC — west coast games
   schedule:
-    - cron: "30 14 * * *"   # 9:30 AM CT  — full run with Statcast
-    - cron: "0 16 * * *"    # 11:00 AM CT — early afternoon lineup watch
-    - cron: "30 16 * * *"   # 11:30 AM CT — 12:05 PM game coverage
-    - cron: "0 18 * * *"    # 1:00 PM CT  — afternoon game pre-pitch
-    - cron: "0 19 * * *"    # 2:00 PM CT  — main evening lineup window
-    - cron: "0 20 * * *"    # 3:00 PM CT  — evening lineup confirmation
-    - cron: "0 21 * * *"    # 4:00 PM CT  — pre-evening game final check
-    - cron: "0 23 * * *"    # 6:00 PM CT  — evening games, late changes
-    - cron: "0 1 * * *"     # 8:00 PM CT  — west coast games
-    - cron: "0 13 * * 1"    # 8:00 AM CT Monday — weekly seed-dimensions refresh
+    - cron: "6 11 * * *"     # full run w/ Statcast
+    - cron: "12 13 * * 1"    # Monday seed-dimensions refresh
+    - cron: "18 14 * * *"    # intraday: early lineup watch
+    - cron: "41 16 * * *"    # intraday: afternoon pre-pitch
+    - cron: "27 17 * * *"    # intraday: main lineup window
+    - cron: "53 18 * * *"    # intraday: lineup confirmation
+    - cron: "36 19 * * *"    # intraday: pre-evening check
+    - cron: "22 21 * * *"    # intraday: evening late changes
+    - cron: "44 23 * * *"    # intraday: west coast games
 
   # ── Manual trigger ────────────────────────────────────────────────────────
   workflow_dispatch:
@@ -44,72 +63,55 @@ on:
         type: choice
         options: ["false", "true"]
 
-# Prevent concurrent runs from stomping on each other
-concurrency:
-  group: mlb-pipeline
-  cancel-in-progress: false
-
 jobs:
-  run_pipeline:
-    name: Daily MLB Pipeline
+  # ══════════════════════════════════════════════════════════════════════
+  # FULL RUN — Statcast pull + Monday seed-dimensions.
+  # Own concurrency lane, cancel-in-progress:false — this one shouldn't be
+  # interrupted mid-run. Intraday triggers no longer queue behind it because
+  # they live in a separate concurrency group below.
+  # ══════════════════════════════════════════════════════════════════════
+  full_run:
+    name: Full Pipeline (Statcast / Seed)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_statcast != 'true')
+      || github.event.schedule == '6 11 * * *'
+      || github.event.schedule == '12 13 * * 1'
+    concurrency:
+      group: mlb-pipeline-full
+      cancel-in-progress: false
 
     steps:
-      # ── 1. Checkout repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python 3.10
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      # ── 3. Install dependencies
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # ── 4. Write Google Sheets credentials
       - name: Write GSheets credentials
         run: |
           mkdir -p config
           echo '${{ secrets.GSHEETS_SERVICE_ACCOUNT_JSON }}' > config/sheets_credentials.json
 
-      # ── 5. Detect run type and execute pipeline
-      #
-      #   Priority order:
-      #   1. Monday 8 AM CT (13:00 UTC)        → seed-dimensions
-      #   2. Manual dispatch, skip_statcast=false → full run with Statcast
-      #   3. Manual dispatch, skip_statcast=true  → skip Statcast
-      #   4. Scheduled, hour 14 or 15 UTC        → full run with Statcast
-      #   5. All other scheduled runs             → skip Statcast
-      #
-      - name: Run MLB pipeline
+      - name: Run MLB pipeline (full)
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 60
-          max_attempts: 3
+          max_attempts: 2
           retry_wait_seconds: 60
           command: |
-            HOUR_UTC=$(date -u +%H)
-            MINUTE_UTC=$(date -u +%M)
-            DAY_OF_WEEK=$(date -u +%u)  # 1=Monday
-            if [ "$DAY_OF_WEEK" = "1" ] && [ "$HOUR_UTC" = "13" ]; then
+            if [ "${{ github.event.schedule }}" = "12 13 * * 1" ]; then
               echo "Monday seed-dimensions run"
               python run_pipeline.py --today --seed-dimensions
-            elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$MANUAL_SKIP_STATCAST" = "false" ]; then
-              echo "Manual full run — including Statcast"
-              python run_pipeline.py --today
-            elif [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "$MANUAL_SKIP_STATCAST" = "true" ]; then
-              echo "Manual override: skipping Statcast"
-              python run_pipeline.py --today --skip-statcast
-            elif [ "$HOUR_UTC" = "14" ] || [ "$HOUR_UTC" = "15" ]; then
-              echo "Morning full run (${HOUR_UTC}:${MINUTE_UTC} UTC) — including Statcast"
-              python run_pipeline.py --today
             else
-              echo "Intraday refresh (${HOUR_UTC}:${MINUTE_UTC} UTC) — skipping Statcast"
-              python run_pipeline.py --today --skip-statcast
+              echo "Full run — including Statcast"
+              python run_pipeline.py --today
             fi
         env:
           DB_BACKEND: supabase
@@ -120,15 +122,77 @@ jobs:
           RUN_DATE: ${{ github.event.inputs.run_date }}
           DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
           GIT_SHA: ${{ github.sha }}
-          MANUAL_SKIP_STATCAST: ${{ github.event.inputs.skip_statcast || 'false' }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
 
-      # ── 6. Upload logs
       - name: Upload pipeline logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pipeline-logs-${{ github.run_id }}
+          name: pipeline-logs-full-${{ github.run_id }}
+          path: logs/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  # ══════════════════════════════════════════════════════════════════════
+  # INTRADAY RUN — lineup watches, skip-Statcast.
+  # Own concurrency lane, cancel-in-progress:true — these are idempotent
+  # snapshots keyed by as_of_date, so a newer trigger superseding a stale
+  # in-flight one is fine and prevents cascading queue delay through the day.
+  # ══════════════════════════════════════════════════════════════════════
+  intraday_run:
+    name: Intraday Lineup Refresh
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: >
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.skip_statcast == 'true')
+      || contains(
+           fromJSON('["18 14 * * *","41 16 * * *","27 17 * * *","53 18 * * *","36 19 * * *","22 21 * * *","44 23 * * *"]'),
+           github.event.schedule
+         )
+    concurrency:
+      group: mlb-pipeline-intraday
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write GSheets credentials
+        run: |
+          mkdir -p config
+          echo '${{ secrets.GSHEETS_SERVICE_ACCOUNT_JSON }}' > config/sheets_credentials.json
+
+      - name: Run MLB pipeline (intraday)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 20
+          max_attempts: 2
+          retry_wait_seconds: 45
+          command: |
+            echo "Intraday refresh — skipping Statcast"
+            python run_pipeline.py --today --skip-statcast
+        env:
+          DB_BACKEND: supabase
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          GOOGLE_SHEETS_KEY_PATH: config/sheets_credentials.json
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          LOG_LEVEL: INFO
+          RUN_DATE: ${{ github.event.inputs.run_date }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          GIT_SHA: ${{ github.sha }}
+
+      - name: Upload pipeline logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-logs-intraday-${{ github.run_id }}
           path: logs/
           retention-days: 30
           if-no-files-found: ignore

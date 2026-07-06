@@ -378,8 +378,8 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
     # Dynamic league BA/SLG
     cur.execute(
         "SELECT CAST(SUM(hits) AS REAL) / NULLIF(SUM(at_bats), 0) "
-        "FROM fact_batter_overall WHERE window_code = :wc AND at_bats >= 50",
-        {"wc": window_code},
+        "FROM fact_batter_overall WHERE as_of_date = :aod AND window_code = :wc AND at_bats >= 50",
+        {"aod": as_of_date, "wc": window_code},
     )
     row = cur.fetchone()
     dynamic_league_ba = row[0] if row and row[0] else LEAGUE_AVG_BA

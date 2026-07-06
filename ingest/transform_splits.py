@@ -714,7 +714,7 @@ if __name__ == "__main__":
         exit(1)
     parser = argparse.ArgumentParser()
     parser.add_argument("--date",     help="as_of_date YYYY-MM-DD (default: today)")
-    parser.add_argument("--windows",  default="SEASON,L30D,L14D,L7D")
+    parser.add_argument("--windows",  default="SEASON")
     parser.add_argument("--matchups", action="store_true")
     args = parser.parse_args()
     as_of   = args.date or _today_ct()

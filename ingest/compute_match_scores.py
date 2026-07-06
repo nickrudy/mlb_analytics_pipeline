@@ -570,7 +570,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--date",    help="as_of_date YYYY-MM-DD")
     parser.add_argument("--today",   action="store_true")
-    parser.add_argument("--windows", default="SEASON,L30D,L14D,L7D")
+    parser.add_argument("--windows", default="SEASON")
     args = parser.parse_args()
 
     as_of = args.date if args.date else (

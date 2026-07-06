@@ -222,10 +222,7 @@ def _build_batter_overall(conn, df, as_of_date, season, window_code):
             "games_played": a["games_played"], "ab_per_game": a["ab_per_game"],
         })
     n = bulk_upsert(conn, "fact_batter_overall", rows,
-        conflict_cols="as_of_date,player_id,season,window_code",
-        update_cols=["plate_appearances","at_bats","hits","batting_avg","slugging_pct",
-                     "swing_rate","whiff_rate","hard_hit_rate","barrel_rate",
-                     "ab_per_game","games_played","avg_exit_velocity"])
+        conflict_cols="as_of_date,player_id,season,window_code")
     log.info("    batter_overall: %d rows", n)
 
 
@@ -245,9 +242,7 @@ def _build_batter_hand_splits(conn, df, as_of_date, season, window_code):
             "hard_hit_rate": a["hard_hit_rate"], "barrel_rate": a["barrel_rate"],
         })
     n = bulk_upsert(conn, "fact_batter_hand_splits", rows,
-        conflict_cols="as_of_date,player_id,season,split_hand,window_code",
-        update_cols=["plate_appearances","batting_avg","slugging_pct","whiff_rate",
-                     "hard_hit_rate","barrel_rate"])
+        conflict_cols="as_of_date,player_id,season,split_hand,window_code")
     log.info("    batter_hand_splits: %d rows", n)
 
 
@@ -274,8 +269,7 @@ def _build_batter_pitch_type_splits(conn, df, as_of_date, season, window_code):
             "barrel_rate": a["barrel_rate"], "avg_exit_velocity": a["avg_exit_velocity"],
         })
     n = bulk_upsert(conn, "fact_batter_pitch_type_splits", rows,
-        conflict_cols="as_of_date,player_id,season,split_hand,pitch_type_code,window_code",
-        update_cols=["pitches_seen","batting_avg","slugging_pct","whiff_rate","barrel_rate"])
+        conflict_cols="as_of_date,player_id,season,split_hand,pitch_type_code,window_code")
     log.info("    batter_pitch_type_splits: %d rows", n)
 
 
@@ -301,8 +295,7 @@ def _build_batter_zone_splits(conn, df, as_of_date, season, window_code):
             "hard_hit_rate": a["hard_hit_rate"], "barrel_rate": a["barrel_rate"],
         })
     n = bulk_upsert(conn, "fact_batter_zone_splits", rows,
-        conflict_cols="as_of_date,player_id,season,split_hand,zone_code,window_code",
-        update_cols=["pitches_seen","batting_avg","slugging_pct"])
+        conflict_cols="as_of_date,player_id,season,split_hand,zone_code,window_code")
     log.info("    batter_zone_splits: %d rows", n)
 
 
@@ -340,8 +333,7 @@ def _build_pitcher_overall(conn, df, as_of_date, season, window_code):
             "avg_launch_angle_allowed": _nan(grp["launch_angle"].mean()),
         })
     n = bulk_upsert(conn, "fact_pitcher_overall", rows,
-        conflict_cols="as_of_date,pitcher_id,season,window_code",
-        update_cols=["hits_allowed","whiff_rate","hard_hit_rate_allowed","barrel_rate_allowed"])
+        conflict_cols="as_of_date,pitcher_id,season,window_code")
     log.info("    pitcher_overall: %d rows", n)
 
 
@@ -379,8 +371,7 @@ def _build_pitcher_hand_splits(conn, df, as_of_date, season, window_code):
             "barrel_rate_allowed": _safe_div(barrels, in_play),
         })
     n = bulk_upsert(conn, "fact_pitcher_hand_splits", rows,
-        conflict_cols="as_of_date,pitcher_id,season,split_hand,window_code",
-        update_cols=["batters_faced","whiff_rate","hard_hit_rate_allowed"])
+        conflict_cols="as_of_date,pitcher_id,season,split_hand,window_code")
     log.info("    pitcher_hand_splits: %d rows", n)
 
 
@@ -427,8 +418,7 @@ def _build_pitcher_pitch_mix(conn, df, as_of_date, season, window_code):
             "hard_hit_rate_allowed": _safe_div(hard_hit, in_play),
         })
     n = bulk_upsert(conn, "fact_pitcher_pitch_mix", rows,
-        conflict_cols="as_of_date,pitcher_id,season,split_hand,pitch_type_code,window_code",
-        update_cols=["pitches_thrown","usage_pct","whiff_rate","avg_velocity"])
+        conflict_cols="as_of_date,pitcher_id,season,split_hand,pitch_type_code,window_code")
     log.info("    pitcher_pitch_mix: %d rows", n)
 
 
@@ -462,8 +452,7 @@ def _build_pitcher_zone_profile(conn, df, as_of_date, season, window_code):
             "hard_hit_rate_allowed": _safe_div(hard_hit, in_play),
         })
     n = bulk_upsert(conn, "fact_pitcher_zone_profile", rows,
-        conflict_cols="as_of_date,pitcher_id,season,split_hand,zone_code,pitch_type_code,window_code",
-        update_cols=["pitches_thrown","whiff_rate"])
+        conflict_cols="as_of_date,pitcher_id,season,split_hand,zone_code,pitch_type_code,window_code")
     log.info("    pitcher_zone_profile: %d rows", n)
 
 
@@ -505,10 +494,7 @@ def _build_batter_power_profile(conn, df, as_of_date, season, window_code):
             "batted_ball_events":   bbe,
         })
     n = bulk_upsert(conn, "fact_batter_power_profile", rows,
-        conflict_cols="as_of_date,player_id,season,window_code",
-        update_cols=["hr_per_pa","barrels_per_pa","barrels_per_pa_vs_rhp",
-                     "barrels_per_pa_vs_lhp","hard_hit_rate_vs_rhp",
-                     "hard_hit_rate_vs_lhp","batted_ball_events"])
+        conflict_cols="as_of_date,player_id,season,window_code")
     log.info("    batter_power_profile: %d rows", n)
 
 
@@ -536,8 +522,7 @@ def _build_pitcher_hr_vulnerability(conn, df, as_of_date, season, window_code):
             "batted_ball_events":  bbe,
         })
     n = bulk_upsert(conn, "fact_pitcher_hr_vulnerability", rows,
-        conflict_cols="as_of_date,pitcher_id,season,split_hand,window_code",
-        update_cols=["hr_per_bf_allowed","barrel_rate_allowed","batted_ball_events"])
+        conflict_cols="as_of_date,pitcher_id,season,split_hand,window_code")
     log.info("    pitcher_hr_vulnerability: %d rows", n)
 
 

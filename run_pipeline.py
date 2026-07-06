@@ -178,8 +178,9 @@ def main():
     try:
         from ingest.export_to_daily_tables import export_daily_tables
         export_daily_tables(as_of_date=game_date)
-    except Exception as e:
-        log.warning("Daily table export failed (non-fatal): %s", e)
+    except Exception:
+        log.error("Daily table export FAILED — Looker source not updated. Failing run.", exc_info=True)
+        raise
 
     log.info("=== Pipeline complete for %s ===", game_date)
 

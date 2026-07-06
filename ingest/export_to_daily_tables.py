@@ -172,6 +172,17 @@ def export_daily_tables(as_of_date: str) -> None:
         hrs_rows = cur.fetchall()
         hrs_cols = [d[0] for d in cur.description]
 
+        # ── Abort before truncating if there's nothing to write ────────────
+        # A total-zero result means upstream produced no matchups (no lineups,
+        # or Steps 5/6 failed). Truncating here would blank all three Looker
+        # tables and — historically — still log success. Fail instead.
+        if not (batting_rows or bases_rows or hrs_rows):
+            raise RuntimeError(
+                f"Daily export produced 0 rows across all three tables for "
+                f"{as_of_date}; aborting before TRUNCATE to avoid blanking the "
+                f"Looker dashboards."
+            )
+        
         # ── Truncate and rewrite all three tables ──────────────────────────
         for table in ("daily_top_batting", "daily_top_bases", "daily_top_hrs"):
             conn.execute(f"TRUNCATE TABLE {table}")

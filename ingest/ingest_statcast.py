@@ -18,6 +18,7 @@ import argparse
 from datetime import date, timedelta
 
 from utils.db import get_connection, DB_BACKEND
+from utils.db_bulk import bulk_upsert
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -94,42 +95,6 @@ def _date_chunks(start: date, end: date, chunk_days: int = 14):
         cur += timedelta(days=chunk_days)
 
 
-# ── SQL helper ─────────────────────────────────────────────────────────────
-
-def _upsert_pitch_sql():
-    cols = """
-        game_date, game_pk, at_bat_number, pitch_number,
-        pitcher_id, batter_id, pitch_type_code, stand, p_throws,
-        balls, strikes, zone, plate_x, plate_z,
-        release_speed, release_spin_rate, release_extension,
-        release_pos_x, release_pos_z, pfx_x, pfx_z,
-        description, events, bb_type, launch_speed, launch_angle,
-        estimated_ba_using_speedangle, estimated_woba_using_speedangle,
-        hc_x, hc_y, raw_payload_json
-    """
-    vals = """
-        :game_date, :game_pk, :at_bat_number, :pitch_number,
-        :pitcher_id, :batter_id, :pitch_type_code, :stand, :p_throws,
-        :balls, :strikes, :zone, :plate_x, :plate_z,
-        :release_speed, :release_spin_rate, :release_extension,
-        :release_pos_x, :release_pos_z, :pfx_x, :pfx_z,
-        :description, :events, :bb_type, :launch_speed, :launch_angle,
-        :estimated_ba_using_speedangle, :estimated_woba_using_speedangle,
-        :hc_x, :hc_y, :raw_payload_json
-    """
-    if DB_BACKEND == "supabase":
-        return f"""
-            INSERT INTO stg_statcast_pitches ({cols})
-            VALUES ({vals})
-            ON CONFLICT (game_date, game_pk, at_bat_number, pitch_number)
-            DO NOTHING
-        """
-    return f"""
-        INSERT OR IGNORE INTO stg_statcast_pitches ({cols})
-        VALUES ({vals})
-    """
-
-
 # ── Chunk loader ───────────────────────────────────────────────────────────
 
 def _load_chunk(conn, start_str: str, end_str: str) -> int:
@@ -150,7 +115,6 @@ def _load_chunk(conn, start_str: str, end_str: str) -> int:
     df   = df[keep].copy()
     df["game_date"] = df["game_date"].astype(str)
 
-    sql  = _upsert_pitch_sql()
     rows = []
     for _, row in df.iterrows():
         rows.append({
@@ -187,11 +151,12 @@ def _load_chunk(conn, start_str: str, end_str: str) -> int:
             "raw_payload_json": None,
         })
 
-    for row in rows:
-        conn.execute(sql, row)
+    n = bulk_upsert(conn, "stg_statcast_pitches", rows,
+        conflict_cols="game_date,game_pk,at_bat_number,pitch_number",
+        update_cols=[])   # [] == DO NOTHING (Supabase) / INSERT OR IGNORE (SQLite): keep existing row
     conn.commit()
-    log.info("  Inserted %d rows.", len(rows))
-    return len(rows)
+    log.info("  Inserted %d rows (attempted; conflicts skipped).", n)
+    return n
 
 
 # ── Main runner ────────────────────────────────────────────────────────────

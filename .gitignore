@@ -34,3 +34,8 @@ tableau/~*.twbx
 data/*.db-shm
 data/*.db-wal
 data/*.db
+
+*.db
+*.db-shm
+*.db-wal
+baseline/

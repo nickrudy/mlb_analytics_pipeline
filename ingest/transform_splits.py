@@ -608,6 +608,38 @@ def build_matchups(conn, as_of_date, window_code="SEASON"):
     rows = []
     skipped_pitcher = skipped_batter = 0
 
+    # ── Preload lookups once (de-N+1): replaces up to 6 SELECTs per lineup row ──
+    cur.execute("SELECT player_id, throws, bats FROM dim_players")
+    _throws = {}
+    _bats = {}
+    for _pid, _thr, _bat in cur.fetchall():
+        _throws[_pid] = _thr
+        _bats[_pid] = _bat
+
+    cur.execute(
+        "SELECT player_id, split_hand, batting_avg, woba FROM fact_batter_hand_splits "
+        "WHERE as_of_date=:aod AND window_code=:wc",
+        {"aod": as_of_date, "wc": window_code},
+    )
+    _bhs = {(r[0], r[1]): (r[2], r[3]) for r in cur.fetchall()}
+
+    cur.execute(
+        "SELECT pitcher_id, split_hand, batting_avg_allowed, k_rate FROM fact_pitcher_hand_splits "
+        "WHERE as_of_date=:aod AND window_code=:wc",
+        {"aod": as_of_date, "wc": window_code},
+    )
+    _phs = {(r[0], r[1]): (r[2], r[3]) for r in cur.fetchall()}
+
+    cur.execute("SELECT venue_id, park_run_factor FROM dim_venues")
+    _park = {r[0]: r[1] for r in cur.fetchall()}
+
+    cur.execute(
+        "SELECT game_id, temperature_f, wind_speed_mph, wind_direction_deg "
+        "FROM fact_game_weather WHERE as_of_date=:aod",
+        {"aod": as_of_date},
+    )
+    _weather = {r[0]: (r[1], r[2], r[3]) for r in cur.fetchall()}
+
     for gid, tid, batter_id, pitcher_id, p_hand, opp_tid, venue_id in lineups:
         if not batter_id:
             skipped_batter += 1
@@ -617,43 +649,21 @@ def build_matchups(conn, as_of_date, window_code="SEASON"):
             continue
         resolved_p_hand = p_hand
         if not resolved_p_hand:
-            cur.execute("SELECT throws FROM dim_players WHERE player_id=:pid", {"pid": pitcher_id})
-            ph = cur.fetchone()
-            resolved_p_hand = ph[0] if ph else None
-        cur.execute("SELECT bats FROM dim_players WHERE player_id=:pid", {"pid": batter_id})
-        bh = cur.fetchone()
-        b_hand = bh[0] if bh else None
+            resolved_p_hand = _throws.get(pitcher_id)
+        b_hand = _bats.get(batter_id)
         effective_b_hand = (
             ("L" if resolved_p_hand == "R" else "R") if b_hand == "S" and resolved_p_hand
             else b_hand
         )
         bvh = None
         if resolved_p_hand:
-            cur.execute(
-                "SELECT batting_avg, woba FROM fact_batter_hand_splits "
-                "WHERE as_of_date=:aod AND player_id=:bid AND split_hand=:hand AND window_code=:wc",
-                {"aod": as_of_date, "bid": batter_id, "hand": resolved_p_hand, "wc": window_code},
-            )
-            bvh = cur.fetchone()
+            bvh = _bhs.get((batter_id, resolved_p_hand))
         pvh = None
         if effective_b_hand:
-            cur.execute(
-                "SELECT batting_avg_allowed, k_rate FROM fact_pitcher_hand_splits "
-                "WHERE as_of_date=:aod AND pitcher_id=:pid AND split_hand=:hand AND window_code=:wc",
-                {"aod": as_of_date, "pid": pitcher_id, "hand": effective_b_hand, "wc": window_code},
-            )
-            pvh = cur.fetchone()
-        park = None
-        if venue_id:
-            cur.execute("SELECT park_run_factor FROM dim_venues WHERE venue_id=:vid", {"vid": venue_id})
-            park = cur.fetchone()
-        park_adj = park[0] if park and park[0] else 1.0
-        cur.execute(
-            "SELECT temperature_f, wind_speed_mph, wind_direction_deg "
-            "FROM fact_game_weather WHERE as_of_date=:aod AND game_id=:gid",
-            {"aod": as_of_date, "gid": gid},
-        )
-        weather = cur.fetchone()
+            pvh = _phs.get((pitcher_id, effective_b_hand))
+        park_factor = _park.get(venue_id) if venue_id else None
+        park_adj = park_factor if park_factor else 1.0
+        weather = _weather.get(gid)
         weather_adj = 1.0
         if weather and weather[0] is not None:
             temp_f = weather[0]
@@ -689,9 +699,7 @@ def build_matchups(conn, as_of_date, window_code="SEASON"):
         })
 
     n = bulk_upsert(conn, "fact_matchup_batter_pitcher", rows,
-        conflict_cols="as_of_date,game_id,batter_id,pitcher_id,window_code",
-        update_cols=["batter_vs_hand_batting_avg","projected_batting_avg",
-                     "park_adjustment_factor","weather_adjustment_factor","ingested_at"])
+        conflict_cols="as_of_date,game_id,batter_id,pitcher_id,window_code")
     conn.commit()
     log.info("Matchups built: %d written, %d skipped (no pitcher), %d skipped (no batter).",
              n, skipped_pitcher, skipped_batter)

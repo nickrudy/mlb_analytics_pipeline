@@ -461,8 +461,10 @@ def _build_pitcher_zone_profile(conn, df, as_of_date, season, window_code):
 def _build_batter_power_profile(conn, df, as_of_date, season, window_code):
     rows = []
     in_play_df = df[df["is_in_play"]]
+    ip_empty   = in_play_df.iloc[0:0]
+    ip_by_batter = {k: g for k, g in in_play_df.groupby("batter_id")}
     for bid, grp in df.groupby("batter_id"):
-        ip_grp   = in_play_df[in_play_df["batter_id"] == bid]
+        ip_grp   = ip_by_batter.get(bid, ip_empty)
         bbe      = len(ip_grp)
         pa       = int(grp["is_ab_end"].sum())
         hr       = int(grp["is_home_run"].sum())
@@ -501,11 +503,12 @@ def _build_batter_power_profile(conn, df, as_of_date, season, window_code):
 def _build_pitcher_hr_vulnerability(conn, df, as_of_date, season, window_code):
     rows = []
     in_play_df = df[df["is_in_play"]]
+    ip_empty   = in_play_df.iloc[0:0]
+    ip_by_ph   = {k: g for k, g in in_play_df.groupby(["pitcher_id", "stand"])}
     for (pid, hand), grp in df.groupby(["pitcher_id", "stand"]):
         if not hand:
             continue
-        ip_grp  = in_play_df[(in_play_df["pitcher_id"] == pid) &
-                              (in_play_df["stand"] == hand)]
+        ip_grp  = ip_by_ph.get((pid, hand), ip_empty)
         bbe     = len(ip_grp)
         bf      = int(grp["is_ab_end"].sum())
         hr_a    = int(grp["is_home_run"].sum())
@@ -528,18 +531,32 @@ def _build_pitcher_hr_vulnerability(conn, df, as_of_date, season, window_code):
 
 # ── Main transform ─────────────────────────────────────────────────────────
 
+# Only the columns actually consumed by _enrich, zone assignment, and the
+# builders. Projecting these instead of SELECT * cuts read IO on the large
+# stg_statcast_pitches scan. Verified complete against every aggregator
+# (incl. pitcher_pitch_mix/zone_profile release_*/pfx_* usage). Dropped as
+# unused: balls, strikes, zone, bb_type, hc_x, hc_y, raw_payload_json.
+_READ_COLS = (
+    "game_date, game_pk, pitcher_id, batter_id, pitch_type_code, stand, p_throws, "
+    "plate_x, plate_z, description, events, launch_speed, launch_angle, "
+    "estimated_ba_using_speedangle, estimated_woba_using_speedangle, "
+    "release_speed, release_spin_rate, release_extension, "
+    "release_pos_x, release_pos_z, pfx_x, pfx_z"
+)
+
+
 def transform_splits(conn, as_of_date, window_code, start_date, end_date):
     log.info("Loading pitches: %s -> %s (window=%s)", start_date, end_date, window_code)
     engine = get_engine()
     if DB_BACKEND == "supabase":
-        sql = """
-            SELECT * FROM stg_statcast_pitches
+        sql = f"""
+            SELECT {_READ_COLS} FROM stg_statcast_pitches
             WHERE game_date >= %(start)s AND game_date <= %(end)s
               AND pitcher_id IS NOT NULL AND batter_id IS NOT NULL
         """
     else:
-        sql = """
-            SELECT * FROM stg_statcast_pitches
+        sql = f"""
+            SELECT {_READ_COLS} FROM stg_statcast_pitches
             WHERE game_date >= :start AND game_date <= :end
               AND pitcher_id IS NOT NULL AND batter_id IS NOT NULL
         """

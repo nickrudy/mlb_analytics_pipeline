@@ -39,3 +39,7 @@ data/*.db
 *.db-shm
 *.db-wal
 baseline/
+
+testing/
+
+data/fallback_xslx/

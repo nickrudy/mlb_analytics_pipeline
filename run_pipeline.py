@@ -155,6 +155,36 @@ def main():
                 )
                 log.info("  %s: stale rows deleted.", table)
 
+    # ── Check: do any matchups exist yet for today? ────────────────────────
+    # Every trigger (full run AND each intraday run) reaches this point
+    # regardless of whether lineups have posted. Historically Steps 6/7/7b
+    # would still run, hit zero matchup rows, and Step 7b's own guard
+    # (RuntimeError, see export_to_daily_tables.py) would fail the whole
+    # job -- correct behavior (never blank Looker on empty data), but it
+    # meant EVERY early-morning/early-intraday trigger failed loudly and
+    # emailed a failure notification, every single day, even though "no
+    # lineups yet" is expected and not an error.
+    #
+    # This check moves the same "nothing to do yet" detection one step
+    # earlier and treats it as a clean, successful no-op instead of a
+    # failure -- for ANY trigger, not just the morning one, since it's
+    # driven by actual data state rather than a hardcoded time assumption.
+    # Step 7b's guard stays in place as defense-in-depth for the (different)
+    # case where matchups exist but scoring/export still produces nothing.
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM fact_matchup_batter_pitcher WHERE as_of_date = :aod",
+            {"aod": game_date},
+        )
+        matchup_count = cur.fetchone()[0]
+
+    if matchup_count == 0:
+        log.info("=== No matchups available yet for %s (lineups not posted) -- "
+                  "skipping Steps 6/7/7b. ===", game_date)
+        log.info("=== Pipeline complete for %s (seed-only; no lineups yet) ===", game_date)
+        return
+
     # ── Step 6: Match scores ───────────────────────────────────────────────
     log.info("=== Step 6: Match scores ===")
     from ingest.compute_match_scores import compute_match_scores

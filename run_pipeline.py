@@ -130,9 +130,20 @@ def main():
         for wc in all_windows:
             build_matchups(conn, as_of_date=game_date, window_code=wc)
 
-    # ── Step 5b: Cleanup stale split data (full runs only) ────────────────
-    if not args.skip_statcast:
-        log.info("=== Step 5b: Cleanup stale split data ===")
+    # ── Step 5b: Cleanup stale split data (full runs only, Supabase only) ──
+    # Supabase-only: this cleanup exists purely to control storage/IO cost on
+    # the metered Supabase instance (see the P0/P1 refactor -- this table
+    # list is the exact set of Supabase's daily IO burden). None of that
+    # applies to local SQLite, where disk is effectively free and there is
+    # no burst budget to protect. Skipping it locally lets every day's
+    # snapshot accumulate, which is required for point-in-time backtesting
+    # (see ARCHITECTURE.md's original design intent, and backtest/*.py,
+    # which join across as_of_date history that this cleanup would otherwise
+    # destroy the next day). Local SQLite is intentionally treated as the
+    # deeper historical/analytical store; Supabase stays the lean, today-only
+    # production serving layer.
+    if not args.skip_statcast and DB_BACKEND == "supabase":
+        log.info("=== Step 5b: Cleanup stale split data (Supabase) ===")
         stale_tables = [
             "fact_pitcher_zone_profile",
             "fact_batter_zone_splits",

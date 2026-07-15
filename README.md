@@ -171,7 +171,6 @@ mlb_model_2026/
 ├── ARCHITECTURE.md                         # Database schema + data flow
 ├── BACKTESTING.md                          # Methodology, results, implemented parameters (confirmed current)
 ├── CHANGELOG.md
-├── POSTMORTEM_io_outage_refactor.md        # July 2026 IO incident writeup [VERIFY final location]
 ├── .env                                    # Credentials (not in git)
 ├── .env.template
 ├── .gitignore
@@ -180,7 +179,7 @@ mlb_model_2026/
 │   └── workflows/
 │       └── daily_pipeline.yml              # GitHub Actions cron — the actual production automation
 ├── db/
-│   └── init_db.py                          # Schema DDL + seed data (SQLite path) [VERIFY exact contents current]
+│   └── init_db.py                          # Schema DDL + seed data (SQLite) -- confirmed current, kept in sync with Supabase migration scripts
 ├── ingest/
 │   ├── ingest_mlb_statsapi.py              # Schedule, lineups, rosters
 │   ├── ingest_batter_splits_statsapi.py    # Near-real-time hand splits
@@ -202,8 +201,10 @@ mlb_model_2026/
 ├── docs/
 │   ├── design/
 │   │   └── mlb_pregame_data_dictionary_and_sql_schema.xlsx   # Original schema design doc
-│   └── research/
-│       └── unsolved_metrics_deep_research.docx                # Exploratory metrics research
+│   ├── research/
+│   │   └── unsolved_metrics_deep_research.docx                # Exploratory metrics research
+│   └── incidents/
+│       └── POSTMORTEM_io_outage_refactor.md                   # July 2026 IO exhaustion incident writeup
 ├── scripts/
 │   ├── migrate_schema_to_supabase.py       # Original full SQLite->Postgres schema migration (run once)
 │   ├── migrate_add_power_profile_supabase.py
@@ -211,7 +212,7 @@ mlb_model_2026/
 ├── utils/
 │   ├── db.py                               # Backend connection handling (DB_BACKEND-driven)
 │   ├── db_bulk.py                          # bulk_upsert — shared batched write helper
-│   └── config.py                           # Loads .env, shared constants [VERIFY exact contents current]
+│   └── config.py                           # Central .env loader -- see ARCHITECTURE.md "Configuration loading" for the DB_BACKEND exception and the LEAGUE_AVG_BA duplication note
 ├── data/
 │   ├── mlb_pregame.db                      # SQLite database (auto-created, gitignored)
 │   └── fallback_xslx/                      # Local daily_board.py output (gitignored)

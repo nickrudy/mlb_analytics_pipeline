@@ -348,10 +348,8 @@ backtesting process. It's used exactly once, as a fallback for
 league BA from `fact_batter_overall` on every run (the same query fixed for
 a missing date filter earlier this refactor). Since that table is always
 populated in normal operation, this fallback essentially never fires in
-practice — it is not a load-bearing daily value, just an unreachable-in-
-practice safety net. Cosmetic-only backlog item at most (a direct query
-recently measured the real dynamic value at ~0.240, close to the constant
-already).
+practice. It is also a fully separate constant from `utils/config.py`'s
+own `LEAGUE_AVG_BA` — see "Configuration loading" below.
 
 ### Adjustment Factors
 
@@ -414,8 +412,12 @@ defense-in-depth backstop should the Data API ever be re-enabled.
 ### Secondary — Google Sheets
 
 `ingest/export_to_sheets.py`, Step 7. 28-column export, non-fatal on failure.
-**[VERIFY: confirm current consumers of this sheet, if any — it may be
-legacy from the pre-Looker era.]**
+Confirmed still in active use (July 2026) — kept specifically as a mobile-
+friendly fallback: when reauthenticating the Looker Studio connection isn't
+convenient (away from a desktop), the Sheet is directly sortable/filterable
+and reflects whatever the last successful pipeline run wrote. Cheap and
+non-fatal by design, worth keeping regardless of how often it's actually
+opened.
 
 ---
 
@@ -452,10 +454,34 @@ neither part of the deployed pipeline:
   projections — built during a Supabase platform outage in July 2026 and kept
   as a standing casual-use tool), and one-off diagnostic scripts.
 - Historical design/reference material lives in **`docs/design/`** (the
-  original schema data dictionary) and **`docs/research/`** (exploratory
-  metrics research), and empirical model-tuning history in **`backtest/logs/`**
-  — all tracked, not gitignored, since they're genuine project documentation
-  rather than scratch work.
+  original schema data dictionary), **`docs/research/`** (exploratory
+  metrics research), and **`docs/incidents/`** (postmortems), and empirical
+  model-tuning history in **`backtest/logs/`** — all tracked, not gitignored,
+  since they're genuine project documentation rather than scratch work.
+
+### Configuration loading
+
+`utils/config.py` is the central `.env` loader — its own docstring states
+"all scripts import from here rather than reading environment variables
+directly." Confirmed current, with one real exception worth knowing:
+`DB_BACKEND` and `SUPABASE_DB_URL` (backend selection) are read directly
+inside `utils/db.py`, bypassing `config.py` entirely — not a bug, just an
+intentional-looking exception to the stated pattern. `config.py`'s own
+`DB_PATH` (SQLite file location, defaults to `data/mlb_pregame.db`) is a
+different variable from any CLI flag — `run_pipeline.py` has no `--db-path`
+argument at all (backend is `DB_BACKEND`-only); `db/init_db.py` has its own,
+separate `--db-path` argument for where to create a fresh SQLite file. Easy
+to conflate; they're unrelated to each other.
+
+`config.py` also defines its own `LEAGUE_AVG_BA` (env-overridable, defaults
+to 0.243) — confirmed, by checking `compute_match_scores.py`'s imports
+directly, that this is **not** the same constant as the one described in
+"Projection Model" above. `compute_match_scores.py` never imports from
+`utils.config` at all; its `LEAGUE_AVG_BA` is an independent, hardcoded
+module-level constant. The two currently hold the same value by
+coincidence, not by connection — editing one does not affect the other.
+Low-priority cleanup candidate: have `compute_match_scores.py` import the
+value from `config.py` instead of maintaining its own copy.
 
 ---
 
@@ -497,8 +523,10 @@ neither part of the deployed pipeline:
       slot AB) — a backtest re-run against ~7 weeks of accumulated
       `fact_player_game_results` ground truth is planned for mid-season 2026,
       not season-end as originally planned
-- [ ] Resolve remaining `[VERIFY]` items in this document (Google Sheets
-      export consumers; postmortem file's final location)
+- [ ] Consider consolidating `LEAGUE_AVG_BA` to a single source of truth (see
+      "Known Behaviors" — it's currently defined independently in both
+      `utils/config.py` and `compute_match_scores.py`, coincidentally holding
+      the same value with no connection between them)
 
 ---
 
@@ -507,8 +535,8 @@ neither part of the deployed pipeline:
 For context on why the architecture looks the way it does: a multi-day Disk
 IO exhaustion incident (Supabase burst budget saturation from IO-inefficient
 read/write patterns, compounded by an unrelated concurrent Supabase platform
-outage) drove a full refactor — see `POSTMORTEM_io_outage_refactor.md`
-**[VERIFY: confirm final location of this file]** for the complete writeup.
+outage) drove a full refactor — see
+`docs/incidents/POSTMORTEM_io_outage_refactor.md` for the complete writeup.
 Summary of what changed: Supabase migration, GitHub Actions orchestration,
 Looker Studio migration, `ingested_at` on matchup writes, the SEASON-only
 window default, projected (not `SELECT *`) pitch reads, batched Statcast

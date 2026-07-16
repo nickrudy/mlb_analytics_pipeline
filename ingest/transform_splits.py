@@ -71,6 +71,16 @@ AT_BAT_END    = {"single","double","triple","home_run","strikeout",
                   "hit_by_pitch","sac_fly","sac_bunt","sac_fly_double_play"}
 HARD_HIT_MPH  = 95.0
 
+# Batter recency signal (hard-hit rate: last-10 games vs. prior season).
+# Validated locally across three iterations before integration -- see
+# testing/BACKLOG_recency_signal.md / docs/incidents/ for the stabilization
+# testing this is based on (measured reliability ~0.36 via lag-1 block
+# autocorrelation at N=10 games). SEASON window only -- see
+# _build_batter_power_profile.
+MIN_LAST10_GAMES = 8
+MIN_LAST10_BB    = 12
+MIN_PRIOR_BB     = 30
+
 
 def _enrich(df):
     desc = df["description"].fillna("").str.lower()
@@ -463,6 +473,35 @@ def _build_batter_power_profile(conn, df, as_of_date, season, window_code):
     in_play_df = df[df["is_in_play"]]
     ip_empty   = in_play_df.iloc[0:0]
     ip_by_batter = {k: g for k, g in in_play_df.groupby("batter_id")}
+
+    # Recency signal -- SEASON window only. Last-10-vs-prior is a
+    # season-scale concept; computing it against an L30D/L14D/L7D
+    # sub-window would be meaningless or actively wrong. Pre-grouped once
+    # here (same de-O(n^2) pattern as ip_by_batter above), not per-batter,
+    # for the same IO/perf reasons as the rest of this function.
+    recency_by_batter = {}
+    if window_code == "SEASON" and not in_play_df.empty:
+        g = (in_play_df.groupby(["batter_id", "game_date"])
+                        .agg(batted_balls=("is_in_play", "size"),
+                             hard_hits=("is_hard_hit", "sum"))
+                        .reset_index()
+                        .sort_values(["batter_id", "game_date"]))
+        g["game_rank_desc"] = g.groupby("batter_id").cumcount(ascending=False)
+        for bid, grp in g.groupby("batter_id"):
+            last10 = grp[grp["game_rank_desc"] < 10]
+            prior  = grp[grp["game_rank_desc"] >= 10]
+            bb_last10 = int(last10["batted_balls"].sum())
+            bb_prior  = int(prior["batted_balls"].sum())
+            if (len(last10) < MIN_LAST10_GAMES or bb_last10 < MIN_LAST10_BB
+                    or bb_prior < MIN_PRIOR_BB):
+                continue
+            last10_rate = _safe_div(int(last10["hard_hits"].sum()), bb_last10)
+            prior_rate  = _safe_div(int(prior["hard_hits"].sum()), bb_prior)
+            if last10_rate is None or prior_rate is None:
+                continue
+            recency_by_batter[bid] = (last10_rate, prior_rate,
+                                       round(last10_rate - prior_rate, 6))
+
     for bid, grp in df.groupby("batter_id"):
         ip_grp   = ip_by_batter.get(bid, ip_empty)
         bbe      = len(ip_grp)
@@ -482,6 +521,13 @@ def _build_batter_power_profile(conn, df, as_of_date, season, window_code):
         bbe_rhp  = len(ip_rhp)
         bbe_lhp  = len(ip_lhp)
 
+        # Every row always carries the three recency keys, explicitly None
+        # when a batter doesn't clear the sample thresholds (or window is
+        # not SEASON) -- matches this function's own existing convention
+        # (e.g. _safe_div already returns None, never an omitted key), and
+        # guarantees a uniform row shape across the whole batch for bulk_upsert.
+        recency = recency_by_batter.get(bid)
+
         rows.append({
             "as_of_date":           as_of_date,
             "player_id":            int(bid),
@@ -494,6 +540,9 @@ def _build_batter_power_profile(conn, df, as_of_date, season, window_code):
             "hard_hit_rate_vs_rhp": _safe_div(int(ip_rhp["is_hard_hit"].sum()), bbe_rhp),
             "hard_hit_rate_vs_lhp": _safe_div(int(ip_lhp["is_hard_hit"].sum()), bbe_lhp),
             "batted_ball_events":   bbe,
+            "hard_hit_rate_last10": recency[0] if recency else None,
+            "hard_hit_rate_prior":  recency[1] if recency else None,
+            "recency_raw_diff":     recency[2] if recency else None,
         })
     n = bulk_upsert(conn, "fact_batter_power_profile", rows,
         conflict_cols="as_of_date,player_id,season,window_code")

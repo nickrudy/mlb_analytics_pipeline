@@ -33,6 +33,11 @@ LEAGUE_AVG_BA          = 0.243
 MIN_PITCHES_THRESHOLD  = 150
 REGRESSION_TARGET      = 0.22
 SLG_REGRESSION_TARGET  = 0.380
+# Reliability-weighted shrinkage on the batter recency signal (hard-hit
+# rate: last-10 games vs. prior season). Value is the measured lag-1 block
+# autocorrelation at N=10 games from local stabilization testing -- not
+# tunable without re-running that test. Applied only to projected_total_bases.
+RECENCY_RELIABILITY    = 0.36
 LEAGUE_AVG_HR_PER_PA   = 0.0293
 MIN_BBE_THRESHOLD      = 100
 LEAGUE_AVG_BARREL_RATE = 0.0708
@@ -152,19 +157,20 @@ def _load_pitcher_hand_splits(conn, as_of_date, window_code):
 
 
 def _load_batter_power_profile(conn, as_of_date, window_code):
-    """Returns {player_id: (hr_per_pa, barrels_per_pa, bpp_vs_rhp, bpp_vs_lhp, bbe)}"""
+    """Returns {player_id: (hr_per_pa, barrels_per_pa, bpp_vs_rhp, bpp_vs_lhp, bbe, recency_raw_diff)}"""
     cur = conn.cursor()
     cur.execute(
         """
         SELECT player_id, hr_per_pa, barrels_per_pa,
-               barrels_per_pa_vs_rhp, barrels_per_pa_vs_lhp, batted_ball_events
+               barrels_per_pa_vs_rhp, barrels_per_pa_vs_lhp, batted_ball_events,
+               recency_raw_diff
         FROM   fact_batter_power_profile
         WHERE  as_of_date = :aod AND window_code = :wc
         """,
         {"aod": as_of_date, "wc": window_code},
     )
-    return {pid: (hr, bpp, bpp_r, bpp_l, bbe)
-            for pid, hr, bpp, bpp_r, bpp_l, bbe in cur.fetchall()}
+    return {pid: (hr, bpp, bpp_r, bpp_l, bbe, recency)
+            for pid, hr, bpp, bpp_r, bpp_l, bbe, recency in cur.fetchall()}
 
 
 def _load_pitcher_hr_vulnerability(conn, as_of_date, window_code):
@@ -289,7 +295,7 @@ def _score_hr(batter_id, pitcher_id, effective_batter_hand, pitcher_throws,
     if not power:
         return None, None, None
 
-    hr_per_pa, overall_bpp, bpp_vs_rhp, bpp_vs_lhp, bbe = power
+    hr_per_pa, overall_bpp, bpp_vs_rhp, bpp_vs_lhp, bbe, _recency_raw_diff = power
     bpp_vs_hand = bpp_vs_rhp if pitcher_throws == 'R' else bpp_vs_lhp
     batter_bpp  = bpp_vs_hand if bpp_vs_hand is not None else overall_bpp
     bbe_count   = bbe or 0
@@ -518,6 +524,17 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
             ab_per_game = batter_overall.get(batter_id) or 3.502
 
         proj_tb = round(proj_slg * ab_per_game, 4)
+
+        # Recency-adjusted total bases -- separate, direct lookup on the
+        # same already-loaded power_profile_data dict (not threaded through
+        # _score_hr, which is HR-probability-scoped and doesn't use this).
+        # Missing/thin-sample batters (recency_raw_diff is None) get a
+        # shrunk_diff of 0.0 -- i.e. no adjustment, identical to today's
+        # output -- never a missing/null projection.
+        power_for_tb = power_profile_data.get(batter_id)
+        raw_diff = power_for_tb[5] if power_for_tb and power_for_tb[5] is not None else 0.0
+        shrunk_diff = round(raw_diff * RECENCY_RELIABILITY, 4)
+        proj_tb = round(proj_tb * (1 + shrunk_diff), 4)
 
         # HR probability
         proj_hr_prob, batter_barrel_rate, pitcher_barrel_rate = _score_hr(

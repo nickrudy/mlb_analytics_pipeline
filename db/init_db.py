@@ -463,6 +463,9 @@ DDL_STATEMENTS = [
         hard_hit_rate_vs_lhp  REAL,
         avg_ev_vs_rhp         REAL,
         avg_ev_vs_lhp         REAL,
+        hard_hit_rate_last10  REAL,
+        hard_hit_rate_prior   REAL,
+        recency_raw_diff      REAL,
         PRIMARY KEY (as_of_date, player_id, season, window_code),
         FOREIGN KEY (player_id)   REFERENCES dim_players(player_id),
         FOREIGN KEY (window_code) REFERENCES dim_split_windows(window_code)

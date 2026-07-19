@@ -69,6 +69,12 @@ AT_BAT_END    = {"single","double","triple","home_run","strikeout",
                   "grounded_into_double_play","double_play","triple_play",
                   "field_error","fielders_choice","fielders_choice_out",
                   "hit_by_pitch","sac_fly","sac_bunt","sac_fly_double_play"}
+# Deliberately NOT folded into AT_BAT_END -- that set feeds the existing,
+# already-backtested batting_avg/slugging_pct denominators (ab/pa), and
+# changing it now would silently shift those validated metrics. Walks get
+# their own separate, additive PA denominator (pa_obp = ab + walks) used
+# only for on_base_pct/bb_rate -- see _batter_agg.
+WALK_EVENTS   = {"walk", "intent_walk"}
 HARD_HIT_MPH  = 95.0
 
 # Batter recency signal (hard-hit rate: last-10 games vs. prior season).
@@ -93,6 +99,7 @@ def _enrich(df):
     df["is_ball"]        = desc == "ball"
     df["is_hit"]         = evts.isin(HIT_EVENTS)
     df["is_ab_end"]      = evts.isin(AT_BAT_END)
+    df["is_walk"]        = evts.isin(WALK_EVENTS)
     df["is_hard_hit"]    = df["launch_speed"] >= HARD_HIT_MPH
     df["is_barrel"]      = (df["launch_speed"] >= 98.0) & (df["launch_angle"].between(26, 30))
     df["total_bases"]    = evts.map(lambda e: 1 if e == "single" else EXTRA_BASE.get(e, 0))
@@ -122,6 +129,10 @@ def _batter_agg(grp):
     pa = ab = int(grp["is_ab_end"].sum())
     h       = int(grp["is_hit"].sum())
     hr      = int(grp["is_home_run"].sum())
+    walks   = int(grp["is_walk"].sum())
+    # Separate, additive PA denominator for on-base purposes only --
+    # deliberately not touching ab/pa above (see WALK_EVENTS comment).
+    pa_obp  = ab + walks
     swings  = int(grp["is_swing"].sum())
     contacts= int(grp["is_contact"].sum())
     whiffs  = int(grp["is_whiff"].sum())
@@ -139,6 +150,9 @@ def _batter_agg(grp):
     return {
         "plate_appearances": pa, "at_bats": ab, "hits": h, "home_runs": hr,
         "batting_avg": _safe_div(h, ab), "slugging_pct": _safe_div(tb, ab),
+        "walks": walks,
+        "on_base_pct": _safe_div(h + walks, pa_obp),
+        "bb_rate":     _safe_div(walks, pa_obp),
         "games_played": int(games), "ab_per_game": _safe_div(ab, games),
         "xba":   _nan(grp["estimated_ba_using_speedangle"].mean())  if "estimated_ba_using_speedangle"  in grp else None,
         "xwoba": _nan(grp["estimated_woba_using_speedangle"].mean()) if "estimated_woba_using_speedangle" in grp else None,
@@ -247,6 +261,7 @@ def _build_batter_hand_splits(conn, df, as_of_date, season, window_code):
             "season": season, "split_hand": hand, "window_code": window_code,
             "plate_appearances": a["plate_appearances"], "at_bats": a["at_bats"],
             "hits": a["hits"], "batting_avg": a["batting_avg"],
+            "on_base_pct": a["on_base_pct"], "bb_rate": a["bb_rate"],
             "slugging_pct": a["slugging_pct"], "xba": a["xba"], "xwoba": a["xwoba"],
             "contact_rate": a["contact_rate"], "whiff_rate": a["whiff_rate"],
             "hard_hit_rate": a["hard_hit_rate"], "barrel_rate": a["barrel_rate"],
@@ -365,11 +380,18 @@ def _build_pitcher_hand_splits(conn, df, as_of_date, season, window_code):
         c_swing  = int(grp["is_chase_swing"].sum())
         hits_a   = int(grp["is_hit"].sum())
         ab       = int(grp["is_ab_end"].sum())
+        walks_a  = int(grp["is_walk"].sum())
+        # Separate, additive PA-allowed denominator for on-base purposes
+        # only -- mirrors the batter side exactly, same reasoning (don't
+        # touch batters_faced/batting_avg_allowed, already backtested).
+        pa_obp_a = ab + walks_a
         rows.append({
             "as_of_date": as_of_date, "pitcher_id": int(pid),
             "season": season, "split_hand": hand, "window_code": window_code,
             "batters_faced": ab,
             "batting_avg_allowed": _safe_div(hits_a, ab),
+            "on_base_pct_allowed": _safe_div(hits_a + walks_a, pa_obp_a),
+            "bb_rate": _safe_div(walks_a, pa_obp_a),
             "xba_allowed": _nan(grp["estimated_ba_using_speedangle"].mean()),
             "xwoba_allowed": _nan(grp["estimated_woba_using_speedangle"].mean()),
             "contact_rate_allowed": _safe_div(contacts, swings),

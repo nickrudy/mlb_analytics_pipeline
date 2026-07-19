@@ -45,6 +45,22 @@ LEAGUE_AVG_BARREL_RATE = 0.0708
 SLOT_AB = {1: 3.888, 2: 3.781, 3: 3.708, 4: 3.652, 5: 3.549,
            6: 3.456, 7: 3.339, 8: 3.113, 9: 3.031}
 
+# Empirical 2026 PA/game by lineup slot -- derived the same way SLOT_AB was
+# (AVG(plate_appearances) from fact_player_game_results, grouped by
+# fact_game_lineups.lineup_slot). See BACKTESTING.md's re-evaluation
+# checklist for the AB-equivalent methodology this mirrors.
+SLOT_PA = {1: 4.383, 2: 4.319, 3: 4.174, 4: 4.076, 5: 3.951,
+           6: 3.843, 7: 3.750, 8: 3.456, 9: 3.349}
+PA_PER_GAME_FALLBACK = 3.922  # mean of SLOT_PA, used when lineup slot unknown
+
+# Not yet empirically backtested (unlike REGRESSION_TARGET/SLG_REGRESSION_TARGET,
+# both derived via real grid-search backtesting -- see BACKTESTING.md). This is
+# a placeholder, safety-net fallback only -- dynamic_league_obp (queried live
+# from fact_player_game_results every run, same pattern as dynamic_league_ba)
+# is what's actually used in practice. Candidate for the planned backtest
+# re-derivation round alongside the other constants.
+OBP_REGRESSION_TARGET_FALLBACK = 0.320
+
 
 # ── Regression helper ──────────────────────────────────────────────────────
 
@@ -129,31 +145,31 @@ def _load_batter_zone_splits(conn, as_of_date, window_code):
 
 
 def _load_batter_hand_splits(conn, as_of_date, window_code):
-    """Returns {(player_id, split_hand): (batting_avg, slugging_pct)}"""
+    """Returns {(player_id, split_hand): (batting_avg, slugging_pct, on_base_pct)}"""
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT player_id, split_hand, batting_avg, slugging_pct
+        SELECT player_id, split_hand, batting_avg, slugging_pct, on_base_pct
         FROM   fact_batter_hand_splits
         WHERE  as_of_date = :aod AND window_code = :wc
         """,
         {"aod": as_of_date, "wc": window_code},
     )
-    return {(pid, hand): (ba, slg) for pid, hand, ba, slg in cur.fetchall()}
+    return {(pid, hand): (ba, slg, obp) for pid, hand, ba, slg, obp in cur.fetchall()}
 
 
 def _load_pitcher_hand_splits(conn, as_of_date, window_code):
-    """Returns {(pitcher_id, split_hand): (batting_avg_allowed, slugging_pct_allowed)}"""
+    """Returns {(pitcher_id, split_hand): (batting_avg_allowed, slugging_pct_allowed, on_base_pct_allowed)}"""
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT pitcher_id, split_hand, batting_avg_allowed, slugging_pct_allowed
+        SELECT pitcher_id, split_hand, batting_avg_allowed, slugging_pct_allowed, on_base_pct_allowed
         FROM   fact_pitcher_hand_splits
         WHERE  as_of_date = :aod AND window_code = :wc
         """,
         {"aod": as_of_date, "wc": window_code},
     )
-    return {(pid, hand): (ba, slg) for pid, hand, ba, slg in cur.fetchall()}
+    return {(pid, hand): (ba, slg, obp) for pid, hand, ba, slg, obp in cur.fetchall()}
 
 
 def _load_batter_power_profile(conn, as_of_date, window_code):
@@ -390,6 +406,20 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
     row = cur.fetchone()
     dynamic_league_ba = row[0] if row and row[0] else LEAGUE_AVG_BA
 
+    # Dynamic league OBP -- mirrors dynamic_league_ba's pattern exactly, but
+    # sourced from fact_player_game_results (real box-score outcomes, already
+    # tracks walks/hit_by_pitch/sac_flies via ingest_boxscores.py) rather than
+    # fact_batter_overall, which doesn't have on_base_pct populated. Real OBP
+    # formula: (H + BB + HBP) / (AB + BB + HBP + SF).
+    cur.execute(
+        "SELECT CAST(SUM(hits + walks + hit_by_pitch) AS REAL) / "
+        "NULLIF(SUM(at_bats + walks + hit_by_pitch + sac_flies), 0) "
+        "FROM fact_player_game_results WHERE game_date <= :aod",
+        {"aod": as_of_date},
+    )
+    row = cur.fetchone()
+    dynamic_league_obp = row[0] if row and row[0] else OBP_REGRESSION_TARGET_FALLBACK
+
     # Regression weight
     cur.execute(
         "SELECT regression_weight FROM dim_split_windows WHERE window_code = :wc",
@@ -506,6 +536,18 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
         p_slg = ph[1] if ph and ph[1] is not None else SLG_REGRESSION_TARGET
         slg_baseline = round((b_slg * 0.30) + (p_slg * 0.70), 5)
 
+        # OBP baseline -- same mechanism as SLG (live dict lookup, no PT/zone
+        # layer for v1; BACKTESTING.md's own cross-metric finding is that
+        # baseline dominates all three existing metrics anyway). Uses the
+        # dynamically-queried league OBP as the fallback target, not the
+        # static OBP_REGRESSION_TARGET_FALLBACK constant (mirrors how BA/SLG
+        # baselines use dynamic_league_ba, not a hardcoded target, when real
+        # data is missing).
+        b_obp = bh[2] if bh and bh[2] is not None else dynamic_league_obp
+        p_obp = ph[2] if ph and ph[2] is not None else dynamic_league_obp
+        projected_on_base_pct = round((b_obp * 0.30) + (p_obp * 0.70), 5)
+        projected_on_base_pct = round(projected_on_base_pct * park * weather, 4)
+
         if pt_slg_score and zone_slg_score:
             proj_slg = (slg_baseline * 0.70) + (pt_slg_score * 0.20) + (zone_slg_score * 0.10)
         elif pt_slg_score:
@@ -525,6 +567,19 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
 
         proj_tb = round(proj_slg * ab_per_game, 4)
 
+        # PA per game from lineup slot -- mirrors ab_per_game exactly.
+        # Fallback is the SLOT_PA mean (no per-batter historical PA/game
+        # column exists yet, unlike ab_per_game's batter_overall fallback --
+        # a disclosed simplification, not a correctness gap; the primary
+        # slot-based path is the real, empirically-derived one and covers
+        # the overwhelming majority of confirmed-lineup matchups).
+        if slot and slot in SLOT_PA:
+            pa_per_game = SLOT_PA[slot]
+        else:
+            pa_per_game = PA_PER_GAME_FALLBACK
+
+        projected_times_on_base = round(projected_on_base_pct * pa_per_game, 4)
+
         # Recency-adjusted total bases -- separate, direct lookup on the
         # same already-loaded power_profile_data dict (not threaded through
         # _score_hr, which is HR-probability-scoped and doesn't use this).
@@ -535,6 +590,13 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
         raw_diff = power_for_tb[5] if power_for_tb and power_for_tb[5] is not None else 0.0
         shrunk_diff = round(raw_diff * RECENCY_RELIABILITY, 4)
         proj_tb = round(proj_tb * (1 + shrunk_diff), 4)
+        # For persistence/display: keep the TRUE raw value, including None
+        # when unavailable -- distinct from raw_diff above, which is
+        # 0.0-defaulted specifically for the multiplier math. Coercing to
+        # 0.0 for display would hide "no signal available" behind
+        # "genuinely zero signal", which are meaningfully different things
+        # for a dashboard reader.
+        recency_raw_diff_display = power_for_tb[5] if power_for_tb else None
 
         # HR probability
         proj_hr_prob, batter_barrel_rate, pitcher_barrel_rate = _score_hr(
@@ -559,6 +621,10 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
             "projected_hr_probability": proj_hr_prob,
             "batter_barrel_rate":       batter_barrel_rate,
             "pitcher_barrel_rate_allowed": pitcher_barrel_rate,
+            "recency_raw_diff":         recency_raw_diff_display,
+            "projected_on_base_pct":            projected_on_base_pct,
+            "proj_plate_appearances_per_game":  pa_per_game,
+            "projected_times_on_base":          projected_times_on_base,
             "ingested_at": datetime.now(timezone.utc).isoformat(),
         })
 
@@ -573,6 +639,9 @@ def compute_match_scores(conn, as_of_date, window_code="SEASON"):
                 "projected_slugging", "projected_total_bases",
                 "proj_at_bats_per_game", "projected_hr_probability",
                 "batter_barrel_rate", "pitcher_barrel_rate_allowed",
+                "recency_raw_diff",
+                "projected_on_base_pct", "proj_plate_appearances_per_game",
+                "projected_times_on_base",
                 "ingested_at",
             ],
         )

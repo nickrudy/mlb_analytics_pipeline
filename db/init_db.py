@@ -708,6 +708,12 @@ DDL_STATEMENTS = [
         projected_hr_probability            REAL,
         batter_barrel_rate                  REAL,
         pitcher_barrel_rate_allowed         REAL,
+        recency_raw_diff                    REAL,
+        batter_vs_hand_on_base_pct          REAL,
+        pitcher_vs_hand_on_base_pct_allowed REAL,
+        projected_on_base_pct               REAL,
+        proj_plate_appearances_per_game     REAL,
+        projected_times_on_base             REAL,
         ingested_at                         TEXT,
         PRIMARY KEY (as_of_date, game_id, batter_id, pitcher_id, window_code),
         FOREIGN KEY (batter_id)        REFERENCES dim_players(player_id),
@@ -795,6 +801,9 @@ DDL_STATEMENTS = [
         final_projection    REAL,
         baseline_avg        REAL,
         delta               REAL,
+        projected_on_base_pct              REAL,
+        proj_plate_appearances_per_game    REAL,
+        projected_times_on_base            REAL,
         refreshed_at        TEXT
     )
     """,
